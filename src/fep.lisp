@@ -269,6 +269,12 @@
   ((nodes :initform nil :accessor nodes)
    (edges :initform nil :accessor edges)))
 
+(defclass fep-edge ()
+  ((source :initarg :source :accessor source)
+   (target :initarg :target :accessor target)
+   (ligands-name :accessor ligands-name)
+   (complex-name :accessor complex-name)))
+
 (defclass fep-structure ()
   ((name :initarg :name :accessor name)
    (drawing :initarg :drawing :accessor drawing)
@@ -289,8 +295,24 @@
 (defclass calculation ()
   ((receptors :initform nil :accessor receptors)
    (ligands :initarg :ligands :accessor ligands)
-   (jobs :initarg :jobs :accessor jobs)))
+   (jobs :initarg :jobs :accessor jobs)
+   (top-directory :initform *default-pathname-defaults* :initarg :top-directory :accessor top-directory )
+   (stage :initform 0 :initarg :stage :accessor stage)
+   ))
 
+(defun target-directory (what calculation)
+  (merge-pathnames (make-pathname :directory (list :relative (format nil "~a" (stage calculation)))) (top-directory calculation)))
+
+(defgeneric target-pathname (what calculation ligand))
+
+(defmethod target-pathname (what calculation name)
+  (let* ((target-dir (target-directory what calculation))
+         (pn (merge-pathnames (make-pathname :name name
+                                             :type (string-downcase what))
+                              (target-directory nil calculation))))
+    (ensure-directories-exist pn)
+    pn))
+                                                  
 (defun structure-name (tops)
   (let ((names (mapcar (lambda (x) (subseq (string (car x)) 1 3)) tops)))
     (intern (apply #'concatenate 'string (sort names #'string<)) :keyword)))
@@ -434,7 +456,29 @@
                 (format t "Set stereochemistry of ~a to ~a~%" moveable-atom (cdr stereochemistry-assignment))))
             (format t "Anchored ~a to ~a restraints: ~a~%" moveable-atom pos (chem:all-restraints moveable-atom))))
         fixed-pose-atoms moveable-atoms))
-                  
+
+(defun pose-ligands-using-pattern (calculation pattern docked-molecule &key stereochemical-restraints)
+  (let* ((fixed-atoms-map (pattern-atoms pattern docked-molecule))
+         (fixed-order (let (fo)
+                        (maphash (lambda (index atom)
+                                   (push index fo))
+                                 fixed-atoms-map)
+                        fo))
+         (fixed-atoms (mapcar (lambda (index) (gethash index fixed-atoms-map)) fixed-order))
+         (feps (ligands calculation)))
+    (loop for fep in feps
+          for molecule = (molecule fep)
+          for moveable-atoms-map = (pattern-atoms pattern molecule)
+          for moveable-atoms = (mapcar (lambda (index) (gethash index moveable-atoms-map)) fixed-order)
+          do (format t "fep ~a~%" fep)
+             (format t " moveable-atoms -> ~a~%" fep moveable-atoms)
+             (format t "    fixed-atoms -> ~a~%" fixed-atoms)
+          do (chem:superpose-one molecule moveable-atoms fixed-atoms)
+          do (anchor-to-pose moveable-atoms fixed-atoms :stereochemical-restraints stereochemical-restraints)))
+  (minimize-ligands calculation))
+
+
+
 (defun pose-ligands (calculation fixed-atoms &key stereochemical-restraints)
   (let ((feps (ligands calculation)))
     (loop for fep in feps
@@ -455,7 +499,7 @@
             for added = (nodes jobs)
             do (push fep (nodes jobs))
             do (loop for other in (subseq added 0 (min (length added) connections))
-                     do (push (list fep other) (edges jobs)))))
+                     do (push (make-instance 'fep-edge :source fep :target other) (edges jobs)))))
     (setf (jobs calculation) jobs)))
 
 
@@ -497,6 +541,8 @@ Otherwise return NIL."
           (format makefile "~a~%" (get-output-stream-string targets)))))))
 
 (defun check-am1-calculations (calculation)
+  (warn "This doesn't work right now - we need source tracking to identify the form that is the problem")
+  #+(or)
   (let* ((status-entries (loop for fep in (ligands calculation)
                                for name = (string (name fep))
                                for status = (am1-calculation-complete fep)
@@ -516,6 +562,9 @@ Otherwise return NIL."
                                                                collect (cl-markup:markup
                                                                         (:td :bgcolor (if status "white" "red")
                                                                              (format nil "~a ~a" name (if status "Done" "Incomplete")))))))))))))
+
+
+
 (defun read-am1-charges (calculation)
   (let ((*default-pathname-defaults* (merge-pathnames "ligands/" *default-pathname-defaults*))
         (count 0)
@@ -532,7 +581,7 @@ Otherwise return NIL."
   (loop for fep in (ligands calculation)
         for am1-charges = (am1-charges fep)
         for bcc-corrections = (charges::calculate-bcc-corrections (fep::molecule fep))
-        for am1-bcc-charges = (charges::calculate-am1-bcc-charges (am1-charges fep) bcc-corrections)
+        for am1-bcc-charges = (charges::combine-am1-bcc-charges (am1-charges fep) bcc-corrections)
         do (setf (am1-bcc-charges fep) am1-bcc-charges)))
 
 
@@ -564,3 +613,10 @@ Otherwise return NIL."
                              :weight weight)))
       (chem:clear-restraints atom)
       (chem:add-restraint atom restraint-anchor))))
+
+(defun pattern-atoms (smarts structure)
+  "Given a smarts pattern and a structure, return a hash-table of tags to atoms"
+  (cando:do-atoms (atom structure)
+    (let (match)
+      (when (setf match (chem:matches smarts atom))
+        (return-from pattern-atoms (chem:tags-as-hashtable match))))))

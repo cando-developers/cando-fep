@@ -2,6 +2,67 @@
 
 (in-package :graph)
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;
+;;; Drawing a node in the stream
+
+(defun render-node (stream id name &key (color "white") (shape "rectangle"))
+  (format stream "  \"data\" : {~%")
+  (format stream "    \"id\" : \"~a\"~%" id)
+  (format stream "    label ~s~%" (format nil "~a" name))
+  (format stream "    graphics~%")
+  (format stream "    [~%")
+  (format stream "      type ~s~%" (string-downcase (string shape)))
+  (format stream "      fill ~s~%" (string-downcase (string color)))
+  (format stream "    ]~%")
+  (format stream "  ]~%"))
+
+(defun render-edge (stream source target label &key type)
+  (when source
+    (format stream "  edge~%")
+    (format stream "  [~%")
+    (format stream "    source ~a~%" source)
+    (format stream "    target ~a~%" target)
+    (format stream "    label ~s~%" label)
+    (format stream "    graphics~%")
+    (format stream "    [~%")
+    (format stream "      width 2~%")
+    (format stream "      type ~s~%" "line")
+    (format stream "    ]~%")
+    (format stream "  ]~%")))
+
+(defun render-node-json (stream id name &key (color "white") (shape "rectangle") last-node)
+  (format stream "  {~%")
+  (format stream "  \"data\" : {~%")
+  (format stream "    \"id\" : \"~a\",~%" id)
+  (format stream "    \"label\" : ~s,~%" (format nil "~a" name))
+  (format stream "    \"graphics\" : {~%")
+  (format stream "      \"type\" : ~s,~%" (string-downcase (string shape)))
+  (format stream "      \"fill\" : ~s~%" (string-downcase (string color)))
+  (format stream "    }~%")
+  (format stream "  }~%")
+  (format stream "  }")
+  (unless last-node (format stream ","))
+  (terpri stream))
+
+(defun render-edge-json (stream source target label &key (width 2) type last-edge)
+  (when source
+    (format stream "  {~%")
+    (format stream "  \"data\" : {~%")
+;;    (format stream "    \"id\" : \"~a\",~%" id)
+    (format stream "    \"source\" : ~s,~%" (format nil "~a" source))
+    (format stream "    \"target\" : ~s,~%" (format nil "~a" target))
+    (format stream "    \"label\" : ~s,~%" (format nil "~a" label))
+    (format stream "    \"graphics\" : {~%")
+    (format stream "      \"width\" : ~s,~%" width)
+    (format stream "      \"type\" : ~s~%" "line")
+    (format stream "    }~%")
+    (format stream "  }~%")
+    (format stream "  }")
+    (unless last-edge (format stream ","))
+    (terpri stream)))
+
+
 
 (defun generate-graph (jobs)
   (let ((nodes (make-hash-table)))
@@ -31,9 +92,7 @@
         require([\"cytoscape\"], (cytoscape)=>{
             var canvas = self.querySelector(\".canvas\");
             var cy = cytoscape({
-
                 container: canvas,
-
                 elements: {
                     nodes: [ ~a
                     ],
@@ -160,6 +219,28 @@
       ;;;(format t "~a~%" html-string)
       (cl-jupyter-user:html html-string))))
 
+
+
+(defun save-graph (graph &optional (filename "graph.cyjs"))
+  (with-open-file (fout filename :direction :output)
+    (format fout "{~%")
+    (format fout "  \"elements\" : {~%")
+    (format fout "    \"nodes\" : [~%")
+    (loop for index from 0
+          for last-node = (= index (1- (length (fep:nodes (fep:jobs graph)))))
+          for node in (fep:nodes (fep:jobs graph))
+          do (render-node-json fout (fep:name node) (fep:name node) :shape "circle" :last-node last-node))
+    (format fout "  ],~%")
+    (format fout "  \"edges\" : [~%")
+    (loop for index from 0
+          for last-edge = (= index (1- (length (fep:edges (fep:jobs graph)))))
+          for edge in (fep:edges (fep:jobs graph))
+          do (render-edge-json fout (fep:name (fep:source edge)) (fep:name (fep:target edge)) "dummy" :last-edge last-edge))
+    (format fout "]~%")
+    (format fout "}~%")
+    (format fout "}~%")
+    )
+  graph)
 
 #||
 ;Test with

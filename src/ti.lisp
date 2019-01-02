@@ -1,4 +1,6 @@
-;;; (require :cl-ppcre)
+(in-package :ti)
+
+(require :cl-ppcre)
 
 
 (setf *default-pathname-defaults* #P"~/Dropbox/Shared Group Members/Shiho-Chris/working/fep-demo/fep/")
@@ -149,13 +151,13 @@
 (defclass ti-path ()
   ((lambdas :initform 11 :initarg :lambdas :accessor lambdas)
    (steps :initform nil :initarg :steps :accessor steps)
-   (start-compound :initarg :start-compound :accessor start-compound)
-   (end-compound :initarg :end-compound :accessor end-compound)))
+   (source-compound :initarg :source-compound :accessor source-compound)
+   (target-compound :initarg :target-compound :accessor target-compound)))
 
 (defun make-ti-path (lambdas start end)
   (make-instance 'ti-path :lambdas lambdas
-                          :start-compound start
-                          :end-compound end))
+                          :source-compound start
+                          :target-compound end))
 
 (defparameter *identical-lambda-delta* 0.001)
 (defmethod maybe-add-step (ti-path step)
@@ -168,8 +170,8 @@
 
 (defun edge-string (ti-path)
   (format nil "~a-~a"
-          (name (start-compound ti-path))
-          (name (end-compound ti-path))))
+          (name (source-compound ti-path))
+          (name (target-compound ti-path))))
 
 (defun replace-all (dict in-script)
   (loop for script = in-script then script-result
