@@ -21,5 +21,6 @@
    (:file "jsme")
    (:file "graph2")
    (:file "fep")
+   (:file "script")
    ))
 

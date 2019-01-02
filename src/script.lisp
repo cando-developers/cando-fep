@@ -1,0 +1,67 @@
+(in-package :fep)
+
+(defclass fep-calculation (calculation)
+  ((solvent-box :initform :tip3pbox :initarg :solvent-box :accessor solvent-box)
+   (solvent-buffer :initform 12.0 :initarg :solvent-buffer :accessor solvent-buffer)
+   (solvent-closeness :initform 0.75 :initarg :solvent-closeness :accessor solvent-closeness)
+   (script-0-setup :initform 'default-script-0-setup :accessor script-0-setup)
+   (script-1-leap :initform 'default-script-1-leap :accessor script-1-leap)))
+
+(defun default-script-0-setup (calculation)
+  (leap:source "leaprc.water.tip3p")
+  (leap:load-off "solvents.lib")
+  (leap:load-off "atomic_ions.lib"))
+  
+(defun default-script-1-leap (calculation)
+  (warn "in default-script-1-leap")
+  (loop for receptor in (receptors calculation)
+        for jobs = (jobs calculation)
+        ;; Write out the ligands
+        do (loop for edge in (edges jobs)
+                 for source = (source edge)
+                 for target = (target edge)
+                 for source-molecule = (chem:matter-copy (molecule source))
+                 for target-molecule = (chem:matter-copy (molecule target))
+                 for ligands = (cando:combine source-molecule target-molecule)
+                 for ligands-name = (format nil "ligands-vdw-bonded-~a-~a"
+                                            (string (name source))
+                                            (string (name target)))
+                 do (setf (ligands-name edge) ligands-name)
+                    (leap:solvate-box ligands
+                                      (leap.core:lookup-variable (solvent-box calculation))
+                                      (solvent-buffer calculation)
+                                      (solvent-closeness calculation))
+                    (leap.add-ions:add-ions ligands :|Cl-| 0)
+                    (chem:save-pdb ligands (target-pathname :pdb calculation ligands-name))
+                    (leap.topology:save-amber-parm-format ligands
+                                     (target-pathname :parm7 calculation ligands-name)
+                                     (target-pathname :rst7 calculation ligands-name)))
+           ;; Write out the complexes
+        do (loop for edge in (edges jobs)
+                 for source = (source edge)
+                 for target = (target edge)
+                 for source-molecule = (molecule source)
+                 for target-molecule = (molecule target)
+                 for ligands = (cando:combine (chem:matter-copy source-molecule)
+                                              (chem:matter-copy target-molecule))
+                 for complex-name = (format nil "complex-~a-vdw-bonded-~a-~a"
+                                            (string (chem:get-name receptor))
+                                            (string (name source))
+                                            (string (name target)))
+                 for complex = (cando:combine (chem:matter-copy receptor)
+                                              ligands)
+                 do (setf (complex-name edge) complex-name)
+                    (leap:solvate-box complex
+                                      (leap.core:lookup-variable (solvent-box calculation))
+                                      (solvent-buffer calculation)
+                                      (solvent-closeness calculation))
+                    (leap.add-ions:add-ions complex :|Cl-| 0)
+                    (chem:save-pdb complex (target-pathname :pdb calculation complex-name))
+                    (leap.topology:save-amber-parm-format complex
+                                     (target-pathname :parm7 calculation complex-name)
+                                     (target-pathname :rst7 calculation complex-name)))))
+
+(defmethod generate-files (calculation)
+  (funcall (script-0-setup calculation) calculation)
+  (funcall (script-1-leap calculation) calculation)
+  )
