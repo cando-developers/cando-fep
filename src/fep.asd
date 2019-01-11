@@ -14,7 +14,8 @@
                 (:version :esrap "0.15")
                 :parser.common-rules
                 :PARSER.COMMON-RULES.OPERATORS
-                :architecture.builder-protocol)
+                :architecture.builder-protocol
+                :cl-ppcre)
   :serial t
   :components
   ((:file "packages")
@@ -22,5 +23,7 @@
    (:file "graph2")
    (:file "fep")
    (:file "script")
+   (:file "ti")
+   (:file "graphviz")
    ))
 

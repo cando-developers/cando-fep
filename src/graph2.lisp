@@ -17,9 +17,9 @@
   (format stream "    ]~%")
   (format stream "  ]~%"))
 
-(defun render-edge (stream source target label &key type)
+(defun render-morph (stream source target label &key type)
   (when source
-    (format stream "  edge~%")
+    (format stream "  morph~%")
     (format stream "  [~%")
     (format stream "    source ~a~%" source)
     (format stream "    target ~a~%" target)
@@ -45,7 +45,7 @@
   (unless last-node (format stream ","))
   (terpri stream))
 
-(defun render-edge-json (stream source target label &key (width 2) type last-edge)
+(defun render-morph-json (stream source target label &key (width 2) type last-morph)
   (when source
     (format stream "  {~%")
     (format stream "  \"data\" : {~%")
@@ -59,7 +59,7 @@
     (format stream "    }~%")
     (format stream "  }~%")
     (format stream "  }")
-    (unless last-edge (format stream ","))
+    (unless last-morph (format stream ","))
     (terpri stream)))
 
 
@@ -72,10 +72,10 @@
                          (maphash (lambda (node name)
                                     (format sout "{data: { id: '~a', label: '~a' }},~%" (string name) (string name)))
                                   nodes)))
-          (edge-string (with-output-to-string (sout)
-                         (loop for (from to) in (fep:edges jobs)
+          (morph-string (with-output-to-string (sout)
+                         (loop for (from to) in (fep:morphs jobs)
                                do (format sout "{data: { source: '~a', target: '~a' }},~%" (string (fep:name from)) (string (fep:name to)))))))
-      (values node-string edge-string))))
+      (values node-string morph-string))))
 
     
 (defparameter *graph-form*
@@ -96,7 +96,7 @@
                 elements: {
                     nodes: [ ~a
                     ],
-                    edges: [ ~a
+                    morphs: [ ~a
                     ]},
                 
                 style: [
@@ -120,7 +120,7 @@
                         }
                     },
                     {
-                        selector: 'edge',
+                        selector: 'morph',
                         style: {
                             'label': 'data(label)',
                             'curve-style': 'bezier',
@@ -202,8 +202,8 @@
   </script>
   <p>
     Double click an empty space to add a node.
-    Double click a node or edge to change its label.
-    Click a node, then shift-click another to add an edge.
+    Double click a node or morph to change its label.
+    Click a node, then shift-click another to add an morph.
     Select a node and hit Delete to remove it.
   </p>
 <button class=\"save\">Save</button>
@@ -211,11 +211,11 @@
 
 
 (defun fep-graph (pairs)
-  (multiple-value-bind (node-string edge-string)
+  (multiple-value-bind (node-string morph-string)
     (generate-graph pairs)
     (let ((html-string
             (with-output-to-string (sout)
-              (format sout *graph-form* node-string edge-string))))
+              (format sout *graph-form* node-string morph-string))))
       ;;;(format t "~a~%" html-string)
       (cl-jupyter-user:html html-string))))
 
@@ -233,9 +233,9 @@
     (format fout "  ],~%")
     (format fout "  \"edges\" : [~%")
     (loop for index from 0
-          for last-edge = (= index (1- (length (fep:edges (fep:jobs graph)))))
-          for edge in (fep:edges (fep:jobs graph))
-          do (render-edge-json fout (fep:name (fep:source edge)) (fep:name (fep:target edge)) "dummy" :last-edge last-edge))
+          for last-morph = (= index (1- (length (fep:morphs (fep:jobs graph)))))
+          for morph in (fep:morphs (fep:jobs graph))
+          do (render-morph-json fout (fep:name (fep:source morph)) (fep:name (fep:target morph)) "dummy" :last-morph last-morph))
     (format fout "]~%")
     (format fout "}~%")
     (format fout "}~%")

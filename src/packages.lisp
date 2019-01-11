@@ -54,13 +54,25 @@
    #:receptors
    #:ligands
    #:setup-ligands
+   #:argument
+   #:node
+   #:option
    #:name
+   #:extension
+   #:morph-string
+   #:morph
+   #:inputs
+   #:outputs
+   #:users
+   #:definers
+   #:script
    #:drawing
    #:molecule
-   #:fep-edge
+   #:fep-morph
+   #:node-file
    #:source
    #:target
-   #:edges
+   #:morphs
    #:nodes
    #:setup-feps
    #:build-feps
@@ -74,9 +86,12 @@
    #:read-am1-charges
    #:calculate-am1-bcc-charges
    #:complex
+   #:amber-job
+   #:cpptraj-job
    #:pattern-atoms))
 
-(defpackage #:ti
+
+(defpackage #:fepdot
   (:use #:common-lisp)
   (:export
-   ))
+   #:draw-graph-stream))
