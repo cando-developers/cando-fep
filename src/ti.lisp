@@ -90,14 +90,59 @@ outtraj %side%_solvated.pdb onlyframes 1
 # extract the first ligand
 unstrip
 strip \":2-999999\"
-outtraj %side%_bnz.pdb onlyframes 1
+outtraj %side%_source.pdb onlyframes 1
 
 # extract the second ligand
 unstrip
 strip \":1,3-999999\"
-outtraj %side%_phn.pdb onlyframes 1
+outtraj %side%_target.pdb onlyframes 1
 ")
 
+
+(defparameter *4-leap* "
+# load the AMBER force fields
+source leaprc.ff14SB.redq
+source leaprc.gaff
+loadAmberParams frcmod.ionsjc_tip3p
+
+# load force field parameters for BNZ and PHN
+loadoff $basedir/benz.lib
+loadoff $basedir/phen.lib
+
+# coordinates for solvated ligands as created previously by MD
+lsolv = loadpdb ligands_solvated.pdb
+lbnz = loadpdb ligands_bnz.pdb
+lphn = loadpdb ligands_phn.pdb
+
+# coordinates for complex as created previously by MD
+csolv = loadpdb complex_solvated.pdb
+cbnz = loadpdb complex_bnz.pdb
+cphn = loadpdb complex_phn.pdb
+
+# decharge transformation
+decharge = combine {lbnz lbnz lsolv}
+setbox decharge vdw
+savepdb decharge ligands_decharge.pdb
+saveamberparm decharge ligands_decharge.parm7 ligands_decharge.rst7
+
+decharge = combine {cbnz cbnz csolv}
+setbox decharge vdw
+savepdb decharge complex_decharge.pdb
+saveamberparm decharge complex_decharge.parm7 complex_decharge.rst7
+
+# recharge transformation
+recharge = combine {lphn lphn lsolv}
+setbox recharge vdw
+savepdb recharge ligands_recharge.pdb
+saveamberparm recharge ligands_recharge.parm7 ligands_recharge.rst7
+
+recharge = combine {cphn cphn csolv}
+setbox recharge vdw
+savepdb recharge complex_recharge.pdb
+saveamberparm recharge complex_recharge.parm7 complex_recharge.rst7
+
+quit
+")
 
 (defparameter *heat-in* 
   "heating
@@ -197,6 +242,8 @@ outtraj %side%_phn.pdb onlyframes 1
 
 (defclass morph-side-pdb-file (morph-side-file)
   ()
+  (:default-initargs
+   :extension "pdb")
   (:documentation "PDB files"))
 
 (defclass morph-side-script (morph-side-file)
@@ -368,12 +415,8 @@ its for and then create a new class for it."))
         (outputs (outputs amber-job)))
     (push amber-job (users script))
     (loop for input in inputs
-          do (format t "input -> ~s~%" input)
-             (format t "(users input) -> ~s~%" (users input))
           do (push amber-job (users (node input))))
     (loop for output in outputs
-          do (format t "output -> ~s~%" output)
-             (format t "(users output) -> ~s~%" (users output))
           do (push amber-job (definers (node output))))
     amber-job))
 
@@ -397,7 +440,6 @@ its for and then create a new class for it."))
         for option = (first cur)
         for node = (second cur)
         until (null cur)
-        do (format t "option: ~a node: ~a~%" option node)
         while option
         collect (make-instance 'argument :option option :node node)))
 
@@ -461,27 +503,33 @@ its for and then create a new class for it."))
 
 
 (defun make-morph-side-strip (morph side &key input-coordinate-file input-topology-file)
-  (format t "make-morph-side-strip ~a ~a ~a ~a~%" morph side input-coordinate-file input-topology-file)
-  (make-instance 'morph-side-cpptraj-job
-                 :morph morph
-                 :side side
-                 :script (make-instance 'morph-side-script :morph morph :side side :name "strip" :script *cpptraj-strip*)
-                 :inputs (arguments :-p input-topology-file :coordinates input-coordinate-file)
-                 :outputs (arguments :solvated (make-instance 'morph-side-pdb-file
-                                                              :morph morph
-                                                              :side side
-                                                              :name "solvated"
-                                                              :extension "pdb")
-                                     :source (make-instance 'morph-side-pdb-file
-                                                            :morph morph
-                                                            :side side
-                                                            :name "source"
-                                                            :extension "pdb")
-                                     :target (make-instance 'morph-side-pdb-file
-                                                            :morph morph
-                                                            :side side
-                                                            :name "target"
-                                                            :extension "pdb"))))
+  (connect-graph
+   (make-instance 'morph-side-cpptraj-job
+                  :morph morph
+                  :side side
+                  :script (make-instance 'morph-side-script :morph morph :side side :name "strip" :script *cpptraj-strip*)
+                  :inputs (arguments :-p input-topology-file :coordinates input-coordinate-file)
+                  :outputs (arguments :solvated (make-instance 'morph-side-pdb-file
+                                                               :morph morph
+                                                               :side side
+                                                               :name "solvated"
+                                                               :extension "pdb")
+                                      :source (make-instance 'morph-side-pdb-file
+                                                             :morph morph
+                                                             :side side
+                                                             :name "source"
+                                                             :extension "pdb")
+                                      :target (make-instance 'morph-side-pdb-file
+                                                             :morph morph
+                                                             :side side
+                                                             :name "target"
+                                                             :extension "pdb"))
+                  :makefile-clause "%outputs% : %inputs%
+	runcmd -- %inputs% -- %outputs% -- \\
+	cpptraj %option-inputs% %option-outputs%")))
+
+
+
 
 (defun make-heat-ti-step (lam info &key input-coordinate-file input-topology-file)
   (make-instance 'heat-step
@@ -581,7 +629,7 @@ its for and then create a new class for it."))
           (cons "%option-outputs%" (format nil "~{~a ~}" (reverse option-outputs))))))
     
 
-(defmethod generate-code (calculation (job amber-job) makefile visited-nodes)
+(defmethod generate-code (calculation (job job) makefile visited-nodes)
   ;; Generate script
   (let* ((script (script job))
          (raw-script (script script))
@@ -603,7 +651,7 @@ its for and then create a new class for it."))
 
 
 (defun generate-all-code (calculation work-list)
-  (let ((*default-pathname-defaults* (merge-pathnames #P"jobs/")))
+  (with-top-directory (calculation)
     (let ((visited-nodes (make-hash-table))
           (makefile-pathname (ensure-directories-exist (merge-pathnames "makefile"))))
       (format t "Writing makefile to ~a~%" (translate-logical-pathname makefile-pathname))

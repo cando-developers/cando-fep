@@ -293,6 +293,24 @@
    (am1-charges-time :initform 0 :accessor am1-charges-time)
    (am1-bcc-charges :initarg :am1-bcc-charges :accessor am1-bcc-charges)))
 
+(defmethod print-object ((obj fep-structure) stream)
+  (if *print-readably*
+      (progn
+        (format stream "#$(fep::fep-structure ")
+        (loop for slot in (clos:class-slots (find-class 'fep::fep-structure))
+              for slot-name = (clos:slot-definition-name slot)
+              for initargs = (clos:slot-definition-initargs slot)
+              if (and (car initargs) (slot-boundp obj slot-name))
+                do (format stream "~s ~s " (car initargs) (slot-value obj slot-name)))
+        (format stream ") "))
+      (print-unreadable-object (obj stream)
+        (format stream "fep ~a" (string (name obj))))))
+
+(make-load-form-saving-slots
+(defmethod make-load-form ((object fep-structure) &optional env)
+  (make-load-form-saving-slots object))
+
+
 (defun pdb-safe-residue-name (calculation name)
   name)
 
@@ -322,34 +340,41 @@
                                                         (pdb-safe-atom-name calculation (chem:get-name atom)))
                                                       residue))))))))
 
-(defmethod print-object ((feps fep-structure) stream)
-  (if *print-readably*
-      (call-next-method)
-      (print-unreadable-object (feps stream)
-        (format stream "fep ~a" (string (name feps))))))
 
 (defclass calculation ()
   ((receptors :initform nil :accessor receptors)
    (ligands :initarg :ligands :accessor ligands)
+   (core-topology :initarg :core-topology :accessor core-topology)
+   (side-topologys :initarg :side-topologys :accessor side-topologys)
    (jobs :initarg :jobs :accessor jobs)
    (ti-lambdas :initarg :ti-lambdas :initform 11 :accessor ti-lambdas)
-   (top-directory :initform *default-pathname-defaults* :initarg :top-directory :accessor top-directory )
+   (top-directory :initform (merge-pathnames (make-pathname :directory (list :relative
+                                                                             "jobs")))
+                  :initarg :top-directory :accessor top-directory )
    (stage :initform 0 :initarg :stage :accessor stage)
    (residue-name-to-pdb :initform (make-hash-table) :accessor residue-name-to-pdb)
    ))
 
-(defun target-directory (what calculation)
-  (merge-pathnames (make-pathname :directory (list :relative (format nil "~a" (stage calculation)))) (top-directory calculation)))
+(defmethod print-object ((obj calculation) stream)
+  (if *print-readably*
+      (progn
+        (format stream "#.(make-instance 'fep::calculation ")
+        (loop for slot in (clos:class-slots (find-class 'fep::fep-calculation))
+              for slot-name = (clos:slot-definition-name slot)
+              for initargs = (clos:slot-definition-initargs slot)
+              if (and (car initargs) (slot-boundp obj slot-name))
+                do (format stream "~s ~s " (car initargs) (slot-value obj slot-name)))
+        (format stream ") "))
+      (print-unreadable-object (obj stream)
+        (format stream "feps"))))
 
-(defgeneric target-pathname (what calculation ligand))
+(defmacro with-top-directory ((calculation) &body body)
+  `(let ((*default-pathname-defaults*
+           (merge-pathnames (top-directory ,calculation))))
+     ,@body))
 
-(defmethod target-pathname (what calculation name)
-  (let* ((target-dir (target-directory what calculation))
-         (pn (merge-pathnames (make-pathname :name name
-                                             :type (string-downcase what))
-                              (target-directory nil calculation))))
-    (ensure-directories-exist pn)
-    pn))
+(defmethod make-load-form ((object calculation) &optional env)
+  (make-load-form-saving-slots object))
 
 (defun unique-name (atom counters)
   (let* ((atom-name (chem:get-name atom))
@@ -451,6 +476,8 @@
 (defun setup-ligands (feps sketch &key verbose)
   (let ((ligands (multiple-value-bind (core-topology side-chains topology-to-residue map-names-numbers)
                      (build-topologys sketch :verbose verbose)
+                   (setf (core-topology feps) core-topology)
+                   (setf (side-topologys feps) side-chains)
                    (build-feps core-topology side-chains topology-to-residue map-names-numbers))))
     (setf (ligands feps) ligands)))
 
@@ -590,7 +617,7 @@
 
 
 (defun am1-file-name (fep type)
-  (make-pathname :directory '(:relative "ligands") :name (format nil "am1-~a" (string (name fep))) :type type :defaults *default-pathname-defaults*))
+  (make-pathname :directory '(:relative "am1bcc") :name (format nil "am1-~a" (string (name fep))) :type type :defaults *default-pathname-defaults*))
 
 (defun am1-calculation-complete (fep)
   "Return T if the AM1 charges for this FEP exist, are up to date and are available.
@@ -606,7 +633,7 @@ Otherwise return NIL."
 
 (defun setup-am1-calculations (calculation &key (maxcyc 9999))
   (let ((feps (ligands calculation)))
-    (let ((*default-pathname-defaults* (merge-pathnames "ligands/" *default-pathname-defaults*)))
+    (let ((*default-pathname-defaults* (merge-pathnames "am1bcc/" *default-pathname-defaults*)))
       (ensure-directories-exist *default-pathname-defaults*)
       (format t "Creating am1 scripts in ~a~%" (truename *default-pathname-defaults*))
       (let ((all-target (make-string-output-stream))
@@ -652,7 +679,7 @@ Otherwise return NIL."
 
 
 (defun read-am1-charges (calculation)
-  (let ((*default-pathname-defaults* (merge-pathnames "ligands/" *default-pathname-defaults*))
+  (let ((*default-pathname-defaults* (merge-pathnames "am1bcc/" *default-pathname-defaults*))
         (count 0)
         (feps (ligands calculation)))
     (loop for fep in feps
@@ -706,3 +733,4 @@ Otherwise return NIL."
     (let (match)
       (when (setf match (chem:matches smarts atom))
         (return-from pattern-atoms (chem:tags-as-hashtable match))))))
+ 
