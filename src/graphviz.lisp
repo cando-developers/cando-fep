@@ -1,13 +1,26 @@
 (in-package :fepdot)
 
-(defmethod draw-node (id (node fep:amber-job) stream)
+(defmethod draw-node (id (node fep:base-job) stream)
+  (if (fep:script node)
+      (format stream "~a [label = \"~a:~a.~a\" ];~%" id (class-name (class-of node)) (fep:name (fep:script node)) (fep:extension (fep:script node)))
+      (format stream "~a [label = \"~a\" ];~%" id (class-name (class-of node)))))
+
+(defmethod draw-node (id (node fep:amber-job-mixin) stream)
   (format stream "~a [label = \"~a\" ];~%" id (fep:name (fep:script node))))
 
-(defmethod draw-node (id (node fep:cpptraj-job) stream)
+(defmethod draw-node (id (node fep:cpptraj-job-mixin) stream)
   (format stream "~a [label = \"~a\" ];~%" id (fep:name (fep:script node))))
+
+(defgeneric label (node))
+
+(defmethod label ((node fep:node-file))
+  (format nil "~a.~a" (fep:name node) (fep:extension node)))
+
+(defmethod label ((node fep:morph-side-file))
+  (format nil "~a/~a.~a" (fep:morph-string (fep:morph node)) (fep:name node) (fep:extension node)))
 
 (defmethod draw-node (id (node fep:argument) stream)
-  (format stream "~a [label = \"~a/~a.~a\",shape=rectangle];~%" id (fep:morph-string (fep:morph (fep:node node))) (fep:name (fep:node node)) (fep:extension (fep:node node))))
+  (format stream "~a [label = \"~a\",shape=rectangle];~%" id (label (fep:node node))))
 
 (defmethod draw-edge (source-id target-id label stream)
   (format stream "~a -> ~a [label = \"~a\"];~%" source-id target-id label))

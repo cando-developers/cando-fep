@@ -269,11 +269,24 @@
   ((nodes :initform nil :accessor nodes)
    (morphs :initform nil :accessor morphs)))
 
+(defmethod print-object ((obj job-graph) stream)
+  (if *print-readably*
+      (print-object-readably-with-slots obj stream)
+      (print-unreadable-object (obj stream)
+        (format stream "~a" (class-name (class-of obj))))))
+
+
 (defclass fep-morph ()
   ((source :initarg :source :accessor source)
    (target :initarg :target :accessor target)
    (ligands-name :accessor ligands-name)
    (complex-name :accessor complex-name)))
+
+(defmethod print-object ((obj fep-morph) stream)
+  (if *print-readably*
+      (print-object-readably-with-slots obj stream)
+      (print-unreadable-object (obj stream)
+        (format stream "~a" (class-name (class-of obj))))))
 
 (defun morph-string (fep-morph)
   (let ((source-name (name (source fep-morph)))
@@ -286,30 +299,24 @@
    (core-residue-names :initarg :core-residue-names :accessor core-residue-names)
    (mutate-residue-names :initarg :mutate-residue-names :accessor mutate-residue-names)
    (molecule :initarg :molecule :accessor molecule)
-   (molecule-time :initform 0 :accessor molecule-time)
    (atom-order :initarg :atom-order :accessor atom-order)
-   (atom-order-time :initform 0 :accessor atom-order-time)
    (am1-charges :initarg :am1-charges :accessor am1-charges)
-   (am1-charges-time :initform 0 :accessor am1-charges-time)
    (am1-bcc-charges :initarg :am1-bcc-charges :accessor am1-bcc-charges)))
+
+(defun print-object-readably-with-slots (obj stream)
+  (format stream "#$(~a " (class-name (class-of obj)))
+  (loop for slot in (clos:class-slots (class-of obj))
+        for slot-name = (clos:slot-definition-name slot)
+        for initargs = (clos:slot-definition-initargs slot)
+        if (and (car initargs) (slot-boundp obj slot-name))
+          do (format stream "~s ~s " (car initargs) (slot-value obj slot-name)))
+  (format stream ") "))
 
 (defmethod print-object ((obj fep-structure) stream)
   (if *print-readably*
-      (progn
-        (format stream "#$(fep::fep-structure ")
-        (loop for slot in (clos:class-slots (find-class 'fep::fep-structure))
-              for slot-name = (clos:slot-definition-name slot)
-              for initargs = (clos:slot-definition-initargs slot)
-              if (and (car initargs) (slot-boundp obj slot-name))
-                do (format stream "~s ~s " (car initargs) (slot-value obj slot-name)))
-        (format stream ") "))
+      (print-object-readably-with-slots obj stream)
       (print-unreadable-object (obj stream)
-        (format stream "fep ~a" (string (name obj))))))
-
-(make-load-form-saving-slots
-(defmethod make-load-form ((object fep-structure) &optional env)
-  (make-load-form-saving-slots object))
-
+        (format stream "~a ~a" (class-name (class-of obj)) (string (name obj))))))
 
 (defun pdb-safe-residue-name (calculation name)
   name)
@@ -524,8 +531,7 @@
              #+(or)(ensure-unique-hydrogen-names mol)
              (cando:build-unbuilt-hydrogens mol)
              (funcall (find-symbol "ASSIGN-ATOM-TYPES" :leap) mol)
-             (setf (molecule fep) mol
-                   (molecule-time fep) (incf-fep-time))
+             (setf (molecule fep) mol)
           do (format t "build-structures fep: ~a   map-atoms: ~a~%" fep (sorted-map-atoms fep)))))
 
 (defun minimize-ligands (calculation)
@@ -615,7 +621,7 @@
                      do (push (make-instance 'fep-morph :source fep :target other) (morphs jobs)))))
     (setf (jobs calculation) jobs)))
 
-
+#+(or)
 (defun am1-file-name (fep type)
   (make-pathname :directory '(:relative "am1bcc") :name (format nil "am1-~a" (string (name fep))) :type type :defaults *default-pathname-defaults*))
 
@@ -631,27 +637,24 @@ Otherwise return NIL."
             (charges:read-am1-charges out-filename atom-order)))
       (t nil))))
 
-(defun setup-am1-calculations (calculation &key (maxcyc 9999))
-  (let ((feps (ligands calculation)))
-    (let ((*default-pathname-defaults* (merge-pathnames "am1bcc/" *default-pathname-defaults*)))
+(defun setup-am1-calculations (jupyter-job calculation &key (maxcyc 9999))
+  (with-top-directory (calculation)
+    (let ((ligands (ligands calculation)))
       (ensure-directories-exist *default-pathname-defaults*)
       (format t "Creating am1 scripts in ~a~%" (truename *default-pathname-defaults*))
-      (let ((all-target (make-string-output-stream))
-            (targets (make-string-output-stream)))
-        (loop for fep in feps
-              for in-filename = (make-pathname :name (format nil "am1-~a" (string (name fep))) :type "in")
-              for out-filename = (make-pathname :name (format nil "am1-~a" (string (name fep))) :type "out")
-              for in-file = (open in-filename :direction :output)
-              do (format targets "~a : ~a~%" (namestring out-filename) (namestring in-filename))
-              do (format targets "~c$(AMBERHOME)/bin/sqm -O -i ~a -o ~a~%" #\tab (namestring in-filename) (namestring out-filename))
-              do (format targets "~%")
-              do (let ((atoms (charges:write-sqm-calculation in-file (molecule fep) :maxcyc maxcyc)))
-                   (setf (atom-order fep) atoms))
-              do (format all-target "~a " (namestring out-filename)))
-        (with-open-file (makefile "makefile.charges" :direction :output)
-          (format makefile "all : ~a~%" (get-output-stream-string all-target))
-          (format makefile "~cecho Done all~%~%" #\tab)
-          (format makefile "~a~%" (get-output-stream-string targets)))))))
+      (let* (outputs
+             (result (loop for ligand in ligands
+                           for in-file = (make-instance 'sqm-input-file :name (name ligand))
+                           for order-file = (make-instance 'sqm-atom-order-file :name (name ligand))
+                           for atom-order = (with-open-file (fout (ensure-directories-exist (node-pathname in-file)) :direction :output :if-exists :supersede)
+                                              (charges:write-sqm-calculation fout (molecule ligand) :maxcyc maxcyc))
+                           for job = (make-ligand-sqm-step ligand :sqm-input-file in-file)
+                           do (setf (atom-order ligand) atom-order)
+                           do (push (make-instance 'argument :option :output :node in-file) outputs)
+                           collect job)))
+        (format t "About to set outputs result -> ~s~%" result)
+        (setf (outputs jupyter-job) outputs)
+        result))))
 
 (defun check-am1-calculations (calculation)
   (warn "This doesn't work right now - we need source tracking to identify the form that is the problem")
@@ -679,15 +682,14 @@ Otherwise return NIL."
 
 
 (defun read-am1-charges (calculation)
-  (let ((*default-pathname-defaults* (merge-pathnames "am1bcc/" *default-pathname-defaults*))
-        (count 0)
-        (feps (ligands calculation)))
-    (loop for fep in feps
-       for out-filename = (make-pathname :name (format nil "am1-~a" (string (name fep))) :type "out")
-       do (let ((am1-charge (charges::read-am1-charges out-filename (fep::atom-order (nth count feps)))))
-            (setf (am1-charges fep) am1-charge))
-       do (format t "file ~a done~%" (name fep))
-       do (incf count))))
+  (with-top-directory (calculation)
+    (let ((count 0))
+      (loop for ligand in (ligands calculation)
+            for sqm-out = (make-instance 'sqm-output-file :name (name ligand))
+            do (let ((am1-charge (charges::read-am1-charges (node-pathname sqm-out) (fep::atom-order (nth count calculation)))))
+                 (setf (am1-charges ligand) am1-charge))
+            do (format t "file ~a done~%" (name ligand))
+            do (incf count)))))
 
 
 (defun calculate-am1-bcc-charges (calculation)
@@ -734,3 +736,10 @@ Otherwise return NIL."
       (when (setf match (chem:matches smarts atom))
         (return-from pattern-atoms (chem:tags-as-hashtable match))))))
  
+
+(defun load-feps (filename)
+  "Load a feps database and register the topologys"
+  (let ((feps (cando:load-cando filename)))
+    (cando:register-topology (chem:get-name (core-topology feps)) (core-topology feps))
+    (loop for topology in (side-topologys feps)
+          do (cando:register-topology (chem:get-name topology) topology))))

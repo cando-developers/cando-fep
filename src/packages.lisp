@@ -70,6 +70,8 @@
    #:molecule
    #:fep-morph
    #:node-file
+   #:morph-side-file
+   #:load-feps
    #:source
    #:target
    #:morphs
@@ -86,8 +88,10 @@
    #:read-am1-charges
    #:calculate-am1-bcc-charges
    #:complex
-   #:amber-job
-   #:cpptraj-job
+   #:sqm-job-mixin
+   #:base-job
+   #:amber-job-mixin
+   #:cpptraj-job-mixin
    #:pattern-atoms))
 
 

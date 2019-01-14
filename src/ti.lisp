@@ -3,6 +3,74 @@
 ;;; What is this for????
 (defparameter *vdw-bonded* "ifsc=1, scmask1=':1@H6', scmask2=':2@O1,H6'")
 
+(defparameter *cando-charge-script*
+  (format nil "~s"
+          `(progn
+            (load "source-dir;extensions;cando;src;lisp;start-cando.lisp")
+            (ql:quickload :fep)
+            (use-package :fep)
+            (defparameter *feps* (load-feps "%feps%"))
+            (read-am1-charges *feps*)
+            (calculate-am1-bcc-charges *feps*)
+            (cando:save-cando *feps* "%output%"))
+          ))
+
+
+(defparameter *solvate-addion-ligands-morph-side-script*
+  (format nil "~s"
+          `(progn
+             (load "source-dir:extensions;cando;src;lisp;start-cando.lisp")
+             (ql:quickload :feps)
+             (leap:source "leaprc.water.tip3p")
+             (leap:load-off "solvents.lib")
+             (leap:load-off "atomic_ions.lib")
+             (use-package :feps)
+             (defparameter *feps* (fep:load-feps "%input%"))
+             (defparameter *side-name* |%side-name%|)
+             (defparameter *morph* (find |%morph-name%| (fep:ligands *feps*) :key 'fep:name))
+             (defparameter *source* (fep:source *morph*))
+             (defparameter *target* (fep:target *morph*))
+             (defparameter *ligands* (cando:combine (chem:matter-copy *source*)
+                                          (chem:matter-copy *target*)))
+             (leap:solvate-box *ligands*
+                               (leap.core:lookup-variable (solvent-box *feps*))
+                               (solvent-buffer *feps*)
+                               (solvent-closeness *feps*))
+             (leap.add-ions:add-ions *ligands* :|Cl-| 0)
+             (chem:save-pdb *ligands* (ensure-directories-exist "%pdb%"))
+             (ensure-directories-exist "%topology%")
+             (ensure-directories-exist "%coordinates%")
+             (leap.topology:save-amber-parm-format *ligands* "%topology%" "%coordinates%"))))
+
+(defparameter *solvate-addion-complex-morph-side-script*
+  (format nil "~s"
+          `(progn
+             (load "source-dir:extensions;cando;src;lisp;start-cando.lisp")
+             (ql:quickload :feps)
+             (leap:source "leaprc.water.tip3p")
+             (leap:load-off "solvents.lib")
+             (leap:load-off "atomic_ions.lib")
+             (use-package :feps)
+             (defparameter *feps* (fep:load-feps "%input%"))
+             (defparameter *receptor* (first (fep:receptors *feps*)))
+             (defparameter *side-name* |%side-name%|)
+             (defparameter *morph* (find |%morph-name%| (fep:ligands *feps*) :key 'fep:name))
+             (defparameter *source* (fep:source *morph*))
+             (defparameter *target* (fep:target *morph*))
+             (defparameter *ligands* (cando:combine (chem:matter-copy *source*)
+                                          (chem:matter-copy *target*)))
+             (defparameter *complex* (cando:combine (chem:matter-copy *receptor*)
+                                          *ligands*))
+             (leap:solvate-box *complex*
+                               (leap.core:lookup-variable (solvent-box *feps*))
+                               (solvent-buffer *feps*)
+                               (solvent-closeness *feps*))
+             (leap.add-ions:add-ions *complex* :|Cl-| 0)
+             (chem:save-pdb *complex* (ensure-directories-exist "%pdb%"))
+             (ensure-directories-exist #P"%topology%")
+             (ensure-directories-exist #P"%coordinates%")
+             (leap.topology:save-amber-parm-format *complex* "%topology%" "%coordinates%"))))
+
 (defparameter *prepare-min-in*
 "  minimisation
  &cntrl
@@ -81,68 +149,88 @@
 
 
 (defparameter *cpptraj-strip*
-"trajin %side%_prepare/press.rst7
+"trajin %coordinates%
 
 # remove the two ligands and keep the rest
 strip \":1,2\"
-outtraj %side%_solvated.pdb onlyframes 1
+outtraj %solvated% onlyframes 1
 
 # extract the first ligand
 unstrip
 strip \":2-999999\"
-outtraj %side%_source.pdb onlyframes 1
+outtraj %source% onlyframes 1
 
 # extract the second ligand
 unstrip
 strip \":1,3-999999\"
-outtraj %side%_target.pdb onlyframes 1
+outtraj %target% onlyframes 1
 ")
 
 
-(defparameter *4-leap* "
-# load the AMBER force fields
-source leaprc.ff14SB.redq
-source leaprc.gaff
-loadAmberParams frcmod.ionsjc_tip3p
-
+(defparameter *decharge-recharge-4-leap*
+  (format nil "~s"
+          `(progn ;# load the AMBER force fields
+            (load "source-dir;extensions;cando;src;lisp;start-cando.lisp")
+            (source "leaprc.ff14SB.redq")
+            (source "leaprc.gaff")
+            (load-Amber-Params "frcmod.ionsjc_tip3p")
+            (ql:quickload :fep)
+            (use-package :fep)
+            ;; load the fep-calculation
+            (load-feps-calculation "%feps%")
+            (defparameter lsolv (load-pdb %solvated%))
+            (defparameter lsource (load-pdb "%source%"))
+            (defparameter ltarget (load-pdb "%target%"))
+            ;;decharge transformation
+            (defparameter decharge (combine (list lsource lsource lsolv)))
+            (set-box decharge :vdw)
+            (save-pdb decharge "%decharge-pdb%")
+            (save-amber-parm decharge "%decharge-topology%" "%decharge-coordinates%")
+            (defparameter recharge (combine (list ltarget ltarget lsolv)))
+            (set-box recharge :vdw)
+            (save-pdb recharge "%recharge-pdb%")
+            (save-amber-parm recharge "%recharge-topology%" "%recharge-coordinates%")
+            ))
+#|
 # load force field parameters for BNZ and PHN
-loadoff $basedir/benz.lib
-loadoff $basedir/phen.lib
+#loadoff $basedir/benz.lib
+#loadoff $basedir/phen.lib
 
 # coordinates for solvated ligands as created previously by MD
-lsolv = loadpdb ligands_solvated.pdb
-lbnz = loadpdb ligands_bnz.pdb
-lphn = loadpdb ligands_phn.pdb
+##lsolv = loadpdb ligands_solvated.pdb
+##lsource = loadpdb ligands_source.pdb
+##ltarget = loadpdb ligands_target.pdb
+
+# decharge transformation
+##decharge = combine {lsource lsource lsolv}
+##setbox decharge vdw
+##savepdb decharge ligands_decharge.pdb
+##saveamberparm decharge ligands_decharge.parm7 ligands_decharge.rst7
+
+# recharge transformation
+##recharge = combine {ltarget ltarget lsolv}
+##setbox recharge vdw
+##savepdb recharge ligands_recharge.pdb
+##saveamberparm recharge ligands_recharge.parm7 ligands_recharge.rst7
 
 # coordinates for complex as created previously by MD
 csolv = loadpdb complex_solvated.pdb
-cbnz = loadpdb complex_bnz.pdb
-cphn = loadpdb complex_phn.pdb
+csource = loadpdb complex_source.pdb
+ctarget = loadpdb complex_target.pdb
 
-# decharge transformation
-decharge = combine {lbnz lbnz lsolv}
-setbox decharge vdw
-savepdb decharge ligands_decharge.pdb
-saveamberparm decharge ligands_decharge.parm7 ligands_decharge.rst7
-
-decharge = combine {cbnz cbnz csolv}
+decharge = combine {csource csource csolv}
 setbox decharge vdw
 savepdb decharge complex_decharge.pdb
 saveamberparm decharge complex_decharge.parm7 complex_decharge.rst7
 
-# recharge transformation
-recharge = combine {lphn lphn lsolv}
-setbox recharge vdw
-savepdb recharge ligands_recharge.pdb
-saveamberparm recharge ligands_recharge.parm7 ligands_recharge.rst7
-
-recharge = combine {cphn cphn csolv}
+recharge = combine {ctarget ctarget csolv}
 setbox recharge vdw
 savepdb recharge complex_recharge.pdb
 saveamberparm recharge complex_recharge.parm7 complex_recharge.rst7
 
 quit
-")
+|#
+)
 
 (defparameter *heat-in* 
   "heating
@@ -223,12 +311,48 @@ quit
 (defclass node-file ()
   ((definers :initarg :definers :initform nil :accessor definers)
    (users :initarg :users :initform nil :accessor users)
-   (directory% :initarg :directory% :accessor directory%)
    (name :initarg :name :accessor name)
    (extension :initarg :extension :accessor extension)))
 
+(defclass feps-precharge-file (node-file)
+  ()
+  (:default-initargs
+   :name "precharge"
+   :extension "feps"))
 
-(defgeneric substitutions (calculation node-file))
+(defclass feps-postcharge-file (node-file)
+  ()
+  (:default-initargs
+   :name "postcharge"
+   :extension "feps"))
+
+(defclass cando-script-file (node-file)
+  ((script :initarg :script :accessor script))
+  (:default-initargs
+   :name "cando"
+   :extension "lisp"))
+
+(defclass sqm-file-mixin ()
+  ())
+
+(defclass sqm-file (node-file sqm-file-mixin)
+  ())
+
+(defclass sqm-input-file (sqm-file)
+  ()
+  (:default-initargs
+   :extension "in"))
+
+(defclass sqm-atom-order-file (sqm-file)
+  ()
+  (:default-initargs
+   :extension "order"))
+
+(defclass sqm-output-file (sqm-file)
+  ()
+  (:default-initargs
+   :extension "out"))
+
 
 (defclass morph-side-file (node-file)
   ((morph :initarg :morph :accessor morph)
@@ -252,14 +376,36 @@ quit
    :extension "in")
   (:documentation "This is the input script file"))
 
-(defmethod substitutions (calculation (node-file morph-side-script))
+(defun job-substitutions (job)
+  (let (substitutions)
+    (loop for input in (inputs job)
+          for option = (option input)
+          for file = (node input)
+          do (push (cons (format nil "%~a%" (string-downcase option))
+                         (namestring (node-pathname file)))
+                   substitutions))
+    (loop for output in (outputs job)
+          for option = (option output)
+          for file = (node output)
+          do (push (cons (format nil "%~a%" (string-downcase option))
+                         (namestring (node-pathname file)))
+                   substitutions))
+    substitutions))
+
+(defgeneric substitutions (calculation job node-file))
+
+(defmethod substitutions (calculation job (node-file morph-side-script))
   (let ((morph (morph node-file)))
-    (list (cons "%e%" (morph-string morph))
-          (cons "%s%" (string-downcase (side node-file)))
-          (cons "%timask1%" (calculate-timask calculation (source morph)))
-          (cons "%timask2%" (calculate-timask calculation (target morph)))
-          (cons "%scmask1%" (calculate-scmask calculation (source morph)))
-          (cons "%scmask2%" (calculate-scmask calculation (target morph))))))
+    (list* (cons "%morph-name%" (format nil "~s" (morph-string morph)))
+           (cons "%side-name%" (format nil "~s" (side node-file)))
+           (cons "%timask1%" (calculate-timask calculation (source morph)))
+           (cons "%timask2%" (calculate-timask calculation (target morph)))
+           (cons "%scmask1%" (calculate-scmask calculation (source morph)))
+           (cons "%scmask2%" (calculate-scmask calculation (target morph)))
+           (job-substitutions job))))
+
+(defmethod substitutions (calculation job (node-file cando-script-file))
+  (job-substitutions job))
 
 (defclass morph-side-restart-file (morph-side-file)
   ()
@@ -275,6 +421,8 @@ quit
 
 (defclass morph-side-topology-file (morph-side-file)
   ()
+  (:default-initargs
+   :extension "parm7")
   (:documentation "Topology files depending only on morph/side"))
 
 (defclass morph-side-trajectory-file (morph-side-file)
@@ -286,7 +434,7 @@ quit
   (:documentation "A type of file node identified by a side (ligand vs complex),
 a lambda value and an morph." ))
 
-(defun morph-side-lambda-unknown-file (morph-side-lambda-file)
+(defclass morph-side-lambda-unknown-file (morph-side-lambda-file)
   ()
   (:documentation "A file that has an unknown purpose - use this as a placeholder until we know what
 its for and then create a new class for it."))
@@ -319,9 +467,18 @@ its for and then create a new class for it."))
 
 (defgeneric node-pathname (node))
 
+(defmethod node-pathname :around ((node node-file))
+  (ensure-directories-exist (call-next-method)))
+
 (defmethod node-pathname ((node node-file))
-  (make-pathname :name (name node)
+  (make-pathname :name (string-downcase (name node))
                  :type (extension node)))
+
+(defmethod node-pathname ((node sqm-file))
+  (merge-pathnames (call-next-method)
+                   (make-pathname :directory (list
+                                              :relative
+                                              "am1bcc"))))
 
 (defmethod node-pathname ((node morph-side-file))
   (merge-pathnames (call-next-method)
@@ -353,30 +510,56 @@ its for and then create a new class for it."))
 ;;;
 ;;;
 
-(defclass job ()
-  ((script :initarg :script :accessor script)
+(defclass base-job ()
+  ((script :initform nil :initarg :script :accessor script)
    (inputs :initform nil :initarg :inputs :accessor inputs)
    (outputs :initform nil :initarg :outputs :accessor outputs)
    (makefile-clause :initarg :makefile-clause :accessor makefile-clause)))
 
-(defclass amber-job ()
+(defclass jupyter-job (base-job)
+  ()
+  (:default-initargs
+   :makefile-clause nil))
+
+(defclass cando-job (base-job)
   ())
 
-(defclass cpptraj-job ()
+(defclass read-charges-job (cando-job)
+  ())
+                     
+(defclass scripted-job (base-job)
   ())
 
-(defclass morph-side-job (job)
+(defclass sqm-job-mixin ()
+  ())
+
+(defclass cando-job-mixin ()
+  ())
+
+(defclass amber-job-mixin ()
+  ())
+
+(defclass cpptraj-job-mixin ()
+  ())
+
+(defclass ligand-sqm-job (base-job sqm-job-mixin)
+  ((ligand-name :initarg :ligand-name :accessor ligand-name)))
+
+(defclass morph-side-job (scripted-job)
   ((morph :initarg :morph :accessor morph)
    (side :initarg :side :accessor side))
   (:documentation "An AMBER job that only depends on the morph and side"))
 
-(defclass morph-side-amber-job (morph-side-job amber-job)
+(defclass morph-side-cando-job (morph-side-job cando-job-mixin)
   ())
 
-(defclass morph-side-cpptraj-job (morph-side-job cpptraj-job)
+(defclass morph-side-amber-job (morph-side-job amber-job-mixin)
   ())
 
-(defclass ti-step (amber-job)
+(defclass morph-side-cpptraj-job (morph-side-job cpptraj-job-mixin)
+  ())
+
+(defclass ti-step (amber-job-mixin)
   ((step-info :initarg :step-info :accessor step-info)))
 
 (defun output-file (amber-job option)
@@ -413,7 +596,7 @@ its for and then create a new class for it."))
   (let ((script (script amber-job))
         (inputs (inputs amber-job))
         (outputs (outputs amber-job)))
-    (push amber-job (users script))
+    (when script (push amber-job (users script)))
     (loop for input in inputs
           do (push amber-job (users (node input))))
     (loop for output in outputs
@@ -443,6 +626,22 @@ its for and then create a new class for it."))
         while option
         collect (make-instance 'argument :option option :node node)))
 
+(defun standard-makefile-clause (command)
+  (format nil "%outputs% : %inputs%
+	runcmd -- %inputs% -- %outputs% -- \\
+	~a~%" command))
+
+(defun standard-cando-makefile-clause (script)
+  (standard-makefile-clause (format nil "clasp -l ~a" (node-pathname script))))
+
+(defun make-ligand-sqm-step (ligand &key sqm-input-file)
+  (connect-graph
+   (make-instance 'ligand-sqm-job
+                  :ligand-name (name ligand)
+                  :inputs (arguments :-i sqm-input-file)
+                  :outputs (arguments :-o (make-instance 'sqm-output-file
+                                                         :name (name ligand)))
+                  :makefile-clause (standard-makefile-clause "sqm %option-inputs% -O %option-outputs%"))))
 
 (defun make-morph-side-prepare-step (morph side &key name script input-coordinate-file input-topology-file)
   (unless input-coordinate-file (error "You must provide an input-coordinate-file"))
@@ -472,12 +671,8 @@ its for and then create a new class for it."))
                                                          :name name :extension "nc") ;  (make-ti-file "-x" "%epl%/heat.nc")
                                       :-l (make-instance 'morph-side-unknown-file
                                                          :morph morph :side side
-                                                         :name name :extension "log") ; (make-ti-file "-l" "%epl%/heat.log"))
-                                      )
-                  :makefile-clause "%outputs% : %inputs%
-	runcmd -- %inputs% -- %outputs% -- \\
-	pmemd %option-inputs% \\
-	  -O %option-outputs%")))
+                                                         :name name :extension "log")) ; (make-ti-file "-l" "%epl%/heat.log")))
+                  :makefile-clause (standard-makefile-clause "pmemd %option-inputs% -O %option-outputs%"))))
 
 (defun make-morph-side-prepare (morph side &rest args &key input-coordinate-file input-topology-file)
   (unless input-coordinate-file (error "You must provide an input-coordinate-file"))
@@ -524,12 +719,7 @@ its for and then create a new class for it."))
                                                              :side side
                                                              :name "target"
                                                              :extension "pdb"))
-                  :makefile-clause "%outputs% : %inputs%
-	runcmd -- %inputs% -- %outputs% -- \\
-	cpptraj %option-inputs% %option-outputs%")))
-
-
-
+                  :makefile-clause (standard-makefile-clause "cpptraj %option-inputs% %option-outputs%"))))
 
 (defun make-heat-ti-step (lam info &key input-coordinate-file input-topology-file)
   (make-instance 'heat-step
@@ -586,10 +776,11 @@ its for and then create a new class for it."))
     (format t "Number of steps ~a~%" (length (steps ti-path)))))
 
 (defun replace-all (dict in-script)
-  (loop for script = in-script then script-result
-        for (match . substitution) in dict
-        do (setf script-result (cl-ppcre:regex-replace-all match script substitution))
-        finally (return-from replace-all script-result)))
+  (let (script-result)
+    (loop for script = in-script then script-result
+          for (match . substitution) in dict
+          do (setf script-result (cl-ppcre:regex-replace-all match script substitution))
+          finally (return-from replace-all script-result))))
 
 (defun generate-steps (ti-path)
   (let ((delta (/ 1.0 (1- (lambdas ti-path)))))
@@ -629,17 +820,19 @@ its for and then create a new class for it."))
           (cons "%option-outputs%" (format nil "~{~a ~}" (reverse option-outputs))))))
     
 
-(defmethod generate-code (calculation (job job) makefile visited-nodes)
+(defmethod generate-code (calculation (job base-job) makefile visited-nodes)
   ;; Generate script
-  (let* ((script (script job))
-         (raw-script (script script))
-         (substituted-script (replace-all (substitutions calculation script) raw-script)))
-    (with-open-file (fout (ensure-directories-exist (node-pathname script)) :direction :output :if-exists :supersede)
-      (write-string substituted-script fout))
-    (let* ((raw-makefile-clause (makefile-clause job))
-           (makefile-substitutions (makefile-substitutions calculation job))
-           (substituted-makefile-clause (replace-all makefile-substitutions raw-makefile-clause)))
-      (write-string substituted-makefile-clause makefile)
+  (let ((script (script job)))
+    (when script
+      (let* ((raw-script (script script))
+             (substituted-script (replace-all (substitutions calculation job script) raw-script)))
+        (with-open-file (fout (ensure-directories-exist (node-pathname script)) :direction :output :if-exists :supersede)
+          (write-string substituted-script fout)))))
+  (let ((raw-makefile-clause (makefile-clause job)))
+    (when raw-makefile-clause
+      (let* ((makefile-substitutions (makefile-substitutions calculation job))
+             (substituted-makefile-clause (replace-all makefile-substitutions raw-makefile-clause)))
+        (write-string substituted-makefile-clause makefile))
       (terpri makefile)
       (terpri makefile)))
   (loop for output in (outputs job)

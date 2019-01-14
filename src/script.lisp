@@ -20,12 +20,7 @@
       (print-unreadable-object (obj stream)
         (format stream "fep-calculation"))))
 
-(defun default-script-0-setup (calculation)
-  (leap:source "leaprc.water.tip3p")
-  (leap:load-off "solvents.lib")
-  (leap:load-off "atomic_ions.lib"))
-  
-(defun default-script-1-leap (calculation)
+(defun make-script-1-leap (calculation &key input-feps-file)
   (warn "in default-script-1-leap")
   (with-top-directory (calculation)
     (let (work-list)
@@ -34,110 +29,172 @@
             ;; Write out the ligands
             do (format t "jobs -> ~s~%" jobs)
             do (loop for morph in (morphs jobs)
+                     with side = ':ligand
                      for source = (source morph)
                      for target = (target morph)
-                     for source-molecule = (chem:matter-copy (molecule source))
-                     for target-molecule = (chem:matter-copy (molecule target))
-                     for ligands = (cando:combine source-molecule target-molecule)
-                     for ligands-name = (format nil "ligands-vdw-bonded-~a-~a"
-                                                (string (name source))
-                                                (string (name target)))
-                     for parm-name = (make-instance 'morph-side-topology-file
-                                                    :morph morph :side ':ligand
+                     for parm-node = (make-instance 'morph-side-topology-file
+                                                    :morph morph :side side
                                                     :name "ligands-vdw-bonded"
                                                     :extension "parm7")
-                     for coord-name = (make-instance 'morph-side-coordinate-file
-                                                     :morph morph :side ':ligand
+                     for coord-node = (make-instance 'morph-side-coordinate-file
+                                                     :morph morph :side side
                                                      :name "ligands-vdw-bonded"
                                                      :extension "rst7")
-                     for pdb-name = (make-instance 'morph-side-pdb-file
+                     for pdb-node = (make-instance 'morph-side-pdb-file
                                                    :morph morph :side ':ligand
                                                    :name "ligands-vdw-bonded")
-                     do (setf (ligands-name morph) ligands-name)
-                        (format t "Solvating ligands~%")
-                        (finish-output)
-                        (leap:solvate-box ligands
-                                          (leap.core:lookup-variable (solvent-box calculation))
-                                          (solvent-buffer calculation)
-                                          (solvent-closeness calculation))
-                        (format t "Adding ions~%")
-                        (finish-output)
-                        (leap.add-ions:add-ions ligands :|Cl-| 0)
-                        (chem:save-pdb ligands (ensure-directories-exist (node-pathname pdb-name)))
-                        (ensure-directories-exist (node-pathname parm-name))
-                        (ensure-directories-exist (node-pathname coord-name))
-                        (format t "Generating parm and coordinate file~%")
-                        (finish-output)
-                        (leap.topology:save-amber-parm-format ligands
-                                                              (node-pathname parm-name)
-                                                              (node-pathname coord-name))
-                        (multiple-value-bind (first-job last-job)
+                     for script = (make-instance 'morph-side-script
+                                                 :morph morph
+                                                 :side side
+                                                 :script *solvate-addion-ligands-morph-side-script*
+                                                 :name "solvate-addion"
+                                                 :extension "lisp")
+                     for solvate-addion-job = (connect-graph
+                                               (make-instance 'morph-side-cando-job
+                                                              :morph morph
+                                                              :side side
+                                                              :script script
+                                                              :inputs (arguments :input input-feps-file)
+                                                              :outputs (arguments :coordinates coord-node
+                                                                                  :topology parm-node
+                                                                                  :pdb pdb-node)
+                                                              :makefile-clause (standard-cando-makefile-clause script)))
+                     do (multiple-value-bind (first-job last-job)
                             (make-morph-side-prepare morph :ligand
-                                                     :input-topology-file parm-name
-                                                     :input-coordinate-file coord-name)
-                          (let ((press (output-file last-job :-r)))
-                            (make-morph-side-strip morph :ligand
-                                                   :input-topology-file parm-name
-                                                   :input-coordinate-file press))
-                          (push first-job work-list)))
+                                                     :input-topology-file parm-node
+                                                     :input-coordinate-file coord-node)
+                          (let* ((press (output-file last-job :-r))
+                                 (strip-job (make-morph-side-strip morph side
+                                                                   :input-topology-file parm-node
+                                                                   :input-coordinate-file press))
+                                 (solvated (output-file strip-job :solvated))
+                                 (source (output-file strip-job :source))
+                                 (target (output-file strip-job :target))
+                                 (script (make-instance 'morph-side-script
+                                                        :morph morph
+                                                        :side side
+                                                        :script *decharge-recharge-4-leap*
+                                                        :name "decharge-recharge"
+                                                        :extension "lisp"))
+                                 (decharge-pdb (make-instance 'morph-side-pdb-file :morph morph :side side :name "decharge"))
+                                 (decharge-topology (make-instance 'morph-side-topology-file :morph morph :side side :name "decharge"))
+                                 (decharge-coordinates (make-instance 'morph-side-coordinate-file :morph morph :side side :name "decharge"))
+                                 (recharge-pdb (make-instance 'morph-side-pdb-file :morph morph :side side :name "recharge"))
+                                 (recharge-topology (make-instance 'morph-side-topology-file :morph morph :side side :name "recharge"))
+                                 (recharge-coordinates (make-instance 'morph-side-coordinate-file :morph morph :side side :name "recharge")))
+                            (connect-graph
+                             (make-instance 'morph-side-cando-job
+                                            :morph morph
+                                            :side side
+                                            :inputs (arguments :feps input-feps-file
+                                                               :solvated solvated
+                                                               :source source
+                                                               :target target)
+                                            :outputs (arguments :decharge-pdb decharge-pdb
+                                                                :decharge-topology decharge-topology
+                                                                :decharge-coordinates decharge-coordinates
+                                                                :recharge-pdb recharge-pdb
+                                                                :recharge-topology recharge-topology
+                                                                :recharge-coordinates recharge-coordinates) 
+                                            :script script
+                                            :makefile-clause (standard-cando-makefile-clause script)))
+                            (push first-job work-list))))
                ;; Write out the complexes
             do (loop for morph in (morphs jobs)
+                     with side = ':complex
                      for source = (source morph)
                      for target = (target morph)
-                     for source-molecule = (molecule source)
-                     for target-molecule = (molecule target)
-                     for ligands = (cando:combine (chem:matter-copy source-molecule)
-                                                  (chem:matter-copy target-molecule))
-                     for complex-name = (format nil "complex-~a-vdw-bonded-~a-~a"
-                                                (string (chem:get-name receptor))
-                                                (string (name source))
-                                                (string (name target)))
-                     for complex = (cando:combine (chem:matter-copy receptor)
-                                                  ligands)
-                     for parm-name = (make-instance 'morph-side-topology-file
-                                                    :morph morph :side ':complex
+                     for parm-node = (make-instance 'morph-side-topology-file
+                                                    :morph morph :side side
                                                     :name "complex-vdw-bonded"
                                                     :extension "parm7")
-                     for coord-name = (make-instance 'morph-side-coordinate-file
-                                                     :morph morph :side ':complex
+                     for coord-node = (make-instance 'morph-side-coordinate-file
+                                                     :morph morph :side side
                                                      :name "complex-vdw-bonded"
                                                      :extension "rst7")
-                     for pdb-name = (make-instance 'morph-side-pdb-file
-                                                   :morph morph :side ':complex
-                                                   :name "ligands-vdw-bonded")
-                     do (setf (complex-name morph) complex-name)
-                        (format t "Solvating complex~%")
-                        (finish-output)
-                        (leap:solvate-box complex
-                                          (leap.core:lookup-variable (solvent-box calculation))
-                                          (solvent-buffer calculation)
-                                          (solvent-closeness calculation))
-                        (format t "Adding ions~%")
-                        (finish-output)
-                        (leap.add-ions:add-ions complex :|Cl-| 0)
-                        (chem:save-pdb complex (ensure-directories-exist (node-pathname pdb-name)))
-                        (ensure-directories-exist (node-pathname parm-name))
-                        (ensure-directories-exist (node-pathname coord-name))
-                        (format t "Generating parm and coordinate file~%")
-                        (finish-output)
-                        (leap.topology:save-amber-parm-format complex
-                                                              (node-pathname parm-name)
-                                                              (node-pathname coord-name))
-                        (multiple-value-bind (first-job last-job)
-                            (make-morph-side-prepare morph :complex
-                                                     :input-topology-file parm-name
-                                                     :input-coordinate-file coord-name)
-                          (push first-job work-list)
-                          (let ((press (output-file last-job :-r)))
-                            (make-morph-side-strip morph :complex
-                                                   :input-topology-file parm-name
-                                                   :input-coordinate-file press))
-                          )))
+                     for pdb-node = (make-instance 'morph-side-pdb-file
+                                                   :morph morph :side side
+                                                   :name "complex-vdw-bonded")
+                     for script = (make-instance 'morph-side-script
+                                                 :morph morph
+                                                 :side side
+                                                 :script *solvate-addion-complex-morph-side-script*
+                                                 :name "solvate-addion"
+                                                 :extension "lisp")
+                     for solvate-addion-job = (connect-graph
+                                               (make-instance 'morph-side-cando-job
+                                                              :morph morph
+                                                              :side side
+                                                              :script script
+                                                              :inputs (arguments :input input-feps-file)
+                                                              :outputs (arguments :coordinates coord-node
+                                                                                  :topology parm-node
+                                                                                  :pdb pdb-node)
+                                                              :makefile-clause (standard-cando-makefile-clause script)))
+                     do (multiple-value-bind (first-job last-job)
+                            (make-morph-side-prepare morph side
+                                                     :input-topology-file parm-node
+                                                     :input-coordinate-file coord-node)
+                          (let* ((press (output-file last-job :-r))
+                                 (strip-job (make-morph-side-strip morph side
+                                                                   :input-topology-file parm-node
+                                                                   :input-coordinate-file press))
+                                 (solvated (output-file strip-job :solvated))
+                                 (source (output-file strip-job :source))
+                                 (target (output-file strip-job :target))
+                                 (script (make-instance 'morph-side-script
+                                                        :morph morph
+                                                        :side side
+                                                        :script *decharge-recharge-4-leap*
+                                                        :name "decharge-recharge"
+                                                        :extension "lisp"))
+                                 (decharge-pdb (make-instance 'morph-side-pdb-file :morph morph :side side :name "decharge"))
+                                 (decharge-topology (make-instance 'morph-side-topology-file :morph morph :side side :name "decharge"))
+                                 (decharge-coordinates (make-instance 'morph-side-coordinate-file :morph morph :side side :name "decharge"))
+                                 (recharge-pdb (make-instance 'morph-side-pdb-file :morph morph :side side :name "recharge"))
+                                 (recharge-topology (make-instance 'morph-side-topology-file :morph morph :side side :name "recharge"))
+                                 (recharge-coordinates (make-instance 'morph-side-coordinate-file :morph morph :side side :name "recharge")))
+                            (connect-graph
+                             (make-instance 'morph-side-cando-job
+                                            :morph morph
+                                            :side side
+                                            :inputs (arguments :feps input-feps-file
+                                                               :solvated solvated
+                                                               :source source
+                                                               :target target)
+                                            :outputs (arguments :decharge-pdb decharge-pdb
+                                                                :decharge-topology decharge-topology
+                                                                :decharge-coordinates decharge-coordinates
+                                                                :recharge-pdb recharge-pdb
+                                                                :recharge-topology recharge-topology
+                                                                :recharge-coordinates recharge-coordinates) 
+                                            :script script
+                                            :makefile-clause (standard-cando-makefile-clause script)))
+                            (push first-job work-list)))))
       work-list)))
 
-(defmethod generate-files (calculation)
-  (funcall (script-0-setup calculation) calculation)
-  (funcall (script-1-leap calculation) calculation)
-  ;; Do more preparation
-  ;;;(generate-all-scripts calculation)
-  )
+(defmethod generate-jobs (calculation)
+  (with-top-directory (calculation)
+    (let* ((jupyter-job (make-instance 'jupyter-job))
+           (am1-jobs (setup-am1-calculations jupyter-job calculation))
+           (feps-precharge (make-instance 'feps-precharge-file)))
+      (cando:save-cando calculation (node-pathname feps-precharge))
+      (push (make-instance 'argument :option :feps-precharge :node feps-precharge) (outputs jupyter-job))
+      (let* ((script (make-instance 'cando-script-file
+                                    :name "charge"
+                                    :script *cando-charge-script*))
+             (feps-out (make-instance 'feps-postcharge-file)))
+        (connect-graph
+         (make-instance 'cando-job
+                        :inputs (apply #'arguments
+                                       :feps feps-precharge
+                                       (loop for am1-job in am1-jobs
+                                             for output = (output-file am1-job :-o)
+                                             append (list :input output)))
+                        :outputs (arguments :output feps-out)
+                        :script script
+                        :makefile-clause (standard-cando-makefile-clause script)))
+        (make-script-1-leap calculation :input-feps-file feps-out)
+        ;; Do more preparation
+        (generate-all-code calculation (list jupyter-job))
+        jupyter-job))))
