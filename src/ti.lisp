@@ -16,33 +16,7 @@
           ))
 
 
-(defparameter *solvate-addion-ligands-morph-side-script*
-  (format nil "~s"
-          `(progn
-             (load "source-dir:extensions;cando;src;lisp;start-cando.lisp")
-             (ql:quickload :feps)
-             (leap:source "leaprc.water.tip3p")
-             (leap:load-off "solvents.lib")
-             (leap:load-off "atomic_ions.lib")
-             (use-package :feps)
-             (defparameter *feps* (fep:load-feps "%input%"))
-             (defparameter *side-name* |%side-name%|)
-             (defparameter *morph* (find |%morph-name%| (fep:ligands *feps*) :key 'fep:name))
-             (defparameter *source* (fep:source *morph*))
-             (defparameter *target* (fep:target *morph*))
-             (defparameter *ligands* (cando:combine (chem:matter-copy *source*)
-                                          (chem:matter-copy *target*)))
-             (leap:solvate-box *ligands*
-                               (leap.core:lookup-variable (solvent-box *feps*))
-                               (solvent-buffer *feps*)
-                               (solvent-closeness *feps*))
-             (leap.add-ions:add-ions *ligands* :|Cl-| 0)
-             (chem:save-pdb *ligands* (ensure-directories-exist "%pdb%"))
-             (ensure-directories-exist "%topology%")
-             (ensure-directories-exist "%coordinates%")
-             (leap.topology:save-amber-parm-format *ligands* "%topology%" "%coordinates%"))))
-
-(defparameter *solvate-addion-complex-morph-side-script*
+(defparameter *solvate-addion-morph-side-script*
   (format nil "~s"
           `(progn
              (load "source-dir:extensions;cando;src;lisp;start-cando.lisp")
@@ -53,23 +27,25 @@
              (use-package :feps)
              (defparameter *feps* (fep:load-feps "%input%"))
              (defparameter *receptor* (first (fep:receptors *feps*)))
-             (defparameter *side-name* |%side-name%|)
-             (defparameter *morph* (find |%morph-name%| (fep:ligands *feps*) :key 'fep:name))
+             (defparameter *side-name* %side-name%)
+             (defparameter *morph* (find-morph-with-name %morph-name% *feps*))
              (defparameter *source* (fep:source *morph*))
              (defparameter *target* (fep:target *morph*))
-             (defparameter *ligands* (cando:combine (chem:matter-copy *source*)
-                                          (chem:matter-copy *target*)))
-             (defparameter *complex* (cando:combine (chem:matter-copy *receptor*)
-                                          *ligands*))
-             (leap:solvate-box *complex*
+             (if (eq *side-name* ':ligands)
+                 (defparameter *system* (cando:combine (chem:matter-copy *source*)
+                                                       (chem:matter-copy *target*)))
+                 (defparameter *system* (cando:combine (chem:matter-copy *source*)
+                                                       (chem:matter-copy *target*)
+                                                       (chem:matter-copy *receptor*))))
+             (leap:solvate-box *system,*
                                (leap.core:lookup-variable (solvent-box *feps*))
                                (solvent-buffer *feps*)
                                (solvent-closeness *feps*))
-             (leap.add-ions:add-ions *complex* :|Cl-| 0)
-             (chem:save-pdb *complex* (ensure-directories-exist "%pdb%"))
+             (leap.add-ions:add-ions *system,* :|Cl-| 0)
+             (chem:save-pdb *system,* (ensure-directories-exist "%pdb%"))
              (ensure-directories-exist #P"%topology%")
              (ensure-directories-exist #P"%coordinates%")
-             (leap.topology:save-amber-parm-format *complex* "%topology%" "%coordinates%"))))
+             (leap.topology:save-amber-parm-format *system,* "%topology%" "%coordinates%"))))
 
 (defparameter *prepare-min-in*
 "  minimisation

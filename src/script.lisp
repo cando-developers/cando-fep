@@ -28,149 +28,78 @@
             for jobs = (jobs calculation)
             ;; Write out the ligands
             do (format t "jobs -> ~s~%" jobs)
-            do (loop for morph in (morphs jobs)
-                     with side = ':ligand
-                     for source = (source morph)
-                     for target = (target morph)
-                     for parm-node = (make-instance 'morph-side-topology-file
-                                                    :morph morph :side side
-                                                    :name "ligands-vdw-bonded"
-                                                    :extension "parm7")
-                     for coord-node = (make-instance 'morph-side-coordinate-file
-                                                     :morph morph :side side
-                                                     :name "ligands-vdw-bonded"
-                                                     :extension "rst7")
-                     for pdb-node = (make-instance 'morph-side-pdb-file
-                                                   :morph morph :side ':ligand
-                                                   :name "ligands-vdw-bonded")
-                     for script = (make-instance 'morph-side-script
-                                                 :morph morph
-                                                 :side side
-                                                 :script *solvate-addion-ligands-morph-side-script*
-                                                 :name "solvate-addion"
-                                                 :extension "lisp")
-                     for solvate-addion-job = (connect-graph
-                                               (make-instance 'morph-side-cando-job
-                                                              :morph morph
-                                                              :side side
-                                                              :script script
-                                                              :inputs (arguments :input input-feps-file)
-                                                              :outputs (arguments :coordinates coord-node
-                                                                                  :topology parm-node
-                                                                                  :pdb pdb-node)
-                                                              :makefile-clause (standard-cando-makefile-clause script)))
-                     do (multiple-value-bind (first-job last-job)
-                            (make-morph-side-prepare morph :ligand
-                                                     :input-topology-file parm-node
-                                                     :input-coordinate-file coord-node)
-                          (let* ((press (output-file last-job :-r))
-                                 (strip-job (make-morph-side-strip morph side
-                                                                   :input-topology-file parm-node
-                                                                   :input-coordinate-file press))
-                                 (solvated (output-file strip-job :solvated))
-                                 (source (output-file strip-job :source))
-                                 (target (output-file strip-job :target))
-                                 (script (make-instance 'morph-side-script
-                                                        :morph morph
-                                                        :side side
-                                                        :script *decharge-recharge-4-leap*
-                                                        :name "decharge-recharge"
-                                                        :extension "lisp"))
-                                 (decharge-pdb (make-instance 'morph-side-pdb-file :morph morph :side side :name "decharge"))
-                                 (decharge-topology (make-instance 'morph-side-topology-file :morph morph :side side :name "decharge"))
-                                 (decharge-coordinates (make-instance 'morph-side-coordinate-file :morph morph :side side :name "decharge"))
-                                 (recharge-pdb (make-instance 'morph-side-pdb-file :morph morph :side side :name "recharge"))
-                                 (recharge-topology (make-instance 'morph-side-topology-file :morph morph :side side :name "recharge"))
-                                 (recharge-coordinates (make-instance 'morph-side-coordinate-file :morph morph :side side :name "recharge")))
-                            (connect-graph
-                             (make-instance 'morph-side-cando-job
-                                            :morph morph
-                                            :side side
-                                            :inputs (arguments :feps input-feps-file
-                                                               :solvated solvated
-                                                               :source source
-                                                               :target target)
-                                            :outputs (arguments :decharge-pdb decharge-pdb
-                                                                :decharge-topology decharge-topology
-                                                                :decharge-coordinates decharge-coordinates
-                                                                :recharge-pdb recharge-pdb
-                                                                :recharge-topology recharge-topology
-                                                                :recharge-coordinates recharge-coordinates) 
-                                            :script script
-                                            :makefile-clause (standard-cando-makefile-clause script)))
-                            (push first-job work-list))))
-               ;; Write out the complexes
-            do (loop for morph in (morphs jobs)
-                     with side = ':complex
-                     for source = (source morph)
-                     for target = (target morph)
-                     for parm-node = (make-instance 'morph-side-topology-file
-                                                    :morph morph :side side
-                                                    :name "complex-vdw-bonded"
-                                                    :extension "parm7")
-                     for coord-node = (make-instance 'morph-side-coordinate-file
-                                                     :morph morph :side side
-                                                     :name "complex-vdw-bonded"
-                                                     :extension "rst7")
-                     for pdb-node = (make-instance 'morph-side-pdb-file
-                                                   :morph morph :side side
-                                                   :name "complex-vdw-bonded")
-                     for script = (make-instance 'morph-side-script
-                                                 :morph morph
-                                                 :side side
-                                                 :script *solvate-addion-complex-morph-side-script*
-                                                 :name "solvate-addion"
-                                                 :extension "lisp")
-                     for solvate-addion-job = (connect-graph
-                                               (make-instance 'morph-side-cando-job
-                                                              :morph morph
-                                                              :side side
-                                                              :script script
-                                                              :inputs (arguments :input input-feps-file)
-                                                              :outputs (arguments :coordinates coord-node
-                                                                                  :topology parm-node
-                                                                                  :pdb pdb-node)
-                                                              :makefile-clause (standard-cando-makefile-clause script)))
-                     do (multiple-value-bind (first-job last-job)
-                            (make-morph-side-prepare morph side
-                                                     :input-topology-file parm-node
-                                                     :input-coordinate-file coord-node)
-                          (let* ((press (output-file last-job :-r))
-                                 (strip-job (make-morph-side-strip morph side
-                                                                   :input-topology-file parm-node
-                                                                   :input-coordinate-file press))
-                                 (solvated (output-file strip-job :solvated))
-                                 (source (output-file strip-job :source))
-                                 (target (output-file strip-job :target))
-                                 (script (make-instance 'morph-side-script
-                                                        :morph morph
-                                                        :side side
-                                                        :script *decharge-recharge-4-leap*
-                                                        :name "decharge-recharge"
-                                                        :extension "lisp"))
-                                 (decharge-pdb (make-instance 'morph-side-pdb-file :morph morph :side side :name "decharge"))
-                                 (decharge-topology (make-instance 'morph-side-topology-file :morph morph :side side :name "decharge"))
-                                 (decharge-coordinates (make-instance 'morph-side-coordinate-file :morph morph :side side :name "decharge"))
-                                 (recharge-pdb (make-instance 'morph-side-pdb-file :morph morph :side side :name "recharge"))
-                                 (recharge-topology (make-instance 'morph-side-topology-file :morph morph :side side :name "recharge"))
-                                 (recharge-coordinates (make-instance 'morph-side-coordinate-file :morph morph :side side :name "recharge")))
-                            (connect-graph
-                             (make-instance 'morph-side-cando-job
-                                            :morph morph
-                                            :side side
-                                            :inputs (arguments :feps input-feps-file
-                                                               :solvated solvated
-                                                               :source source
-                                                               :target target)
-                                            :outputs (arguments :decharge-pdb decharge-pdb
-                                                                :decharge-topology decharge-topology
-                                                                :decharge-coordinates decharge-coordinates
-                                                                :recharge-pdb recharge-pdb
-                                                                :recharge-topology recharge-topology
-                                                                :recharge-coordinates recharge-coordinates) 
-                                            :script script
-                                            :makefile-clause (standard-cando-makefile-clause script)))
-                            (push first-job work-list)))))
+            do (loop for side in '(:ligand :complex)
+                     for side-name = (format nil "~a-vdw-bonded" (string-downcase side))
+                     do (loop for morph in (morphs jobs)
+                              for source = (source morph)
+                              for target = (target morph)
+                              for parm-node = (make-instance 'morph-side-topology-file
+                                                             :morph morph :side side
+                                                             :name side-name
+                                                             :extension "parm7")
+                              for coord-node = (make-instance 'morph-side-coordinate-file
+                                                              :morph morph :side side
+                                                              :name side-name
+                                                              :extension "rst7")
+                              for pdb-node = (make-instance 'morph-side-pdb-file
+                                                            :morph morph :side side
+                                                            :name side-name)
+                              for script = (make-instance 'morph-side-script
+                                                          :morph morph
+                                                          :side side
+                                                          :script *solvate-addion-morph-side-script*
+                                                          :name "solvate-addion"
+                                                          :extension "lisp")
+                              for solvate-addion-job = (connect-graph
+                                                        (make-instance 'morph-side-cando-job
+                                                                       :morph morph
+                                                                       :side side
+                                                                       :script script
+                                                                       :inputs (arguments :input input-feps-file)
+                                                                       :outputs (arguments :coordinates coord-node
+                                                                                           :topology parm-node
+                                                                                           :pdb pdb-node)
+                                                                       :makefile-clause (standard-cando-makefile-clause script)))
+                              do (multiple-value-bind (first-job last-job)
+                                     (make-morph-side-prepare morph side
+                                                              :input-topology-file parm-node
+                                                              :input-coordinate-file coord-node)
+                                   (let* ((press (output-file last-job :-r))
+                                          (strip-job (make-morph-side-strip morph side
+                                                                            :input-topology-file parm-node
+                                                                            :input-coordinate-file press))
+                                          (solvated (output-file strip-job :solvated))
+                                          (source (output-file strip-job :source))
+                                          (target (output-file strip-job :target))
+                                          (script (make-instance 'morph-side-script
+                                                                 :morph morph
+                                                                 :side side
+                                                                 :script *decharge-recharge-4-leap*
+                                                                 :name "decharge-recharge"
+                                                                 :extension "lisp"))
+                                          (decharge-pdb (make-instance 'morph-side-pdb-file :morph morph :side side :name "decharge"))
+                                          (decharge-topology (make-instance 'morph-side-topology-file :morph morph :side side :name "decharge"))
+                                          (decharge-coordinates (make-instance 'morph-side-coordinate-file :morph morph :side side :name "decharge"))
+                                          (recharge-pdb (make-instance 'morph-side-pdb-file :morph morph :side side :name "recharge"))
+                                          (recharge-topology (make-instance 'morph-side-topology-file :morph morph :side side :name "recharge"))
+                                          (recharge-coordinates (make-instance 'morph-side-coordinate-file :morph morph :side side :name "recharge")))
+                                     (connect-graph
+                                      (make-instance 'morph-side-cando-job
+                                                     :morph morph
+                                                     :side side
+                                                     :inputs (arguments :feps input-feps-file
+                                                                        :solvated solvated
+                                                                        :source source
+                                                                        :target target)
+                                                     :outputs (arguments :decharge-pdb decharge-pdb
+                                                                         :decharge-topology decharge-topology
+                                                                         :decharge-coordinates decharge-coordinates
+                                                                         :recharge-pdb recharge-pdb
+                                                                         :recharge-topology recharge-topology
+                                                                         :recharge-coordinates recharge-coordinates) 
+                                                     :script script
+                                                     :makefile-clause (standard-cando-makefile-clause script)))
+                                     (push first-job work-list))))))
       work-list)))
 
 (defmethod generate-jobs (calculation)
