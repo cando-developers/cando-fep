@@ -279,8 +279,8 @@
 (defclass fep-morph ()
   ((source :initarg :source :accessor source)
    (target :initarg :target :accessor target)
-   (ligands-name :accessor ligands-name)
-   (complex-name :accessor complex-name)))
+   (stages :initarg :stages :initform 1 :accessor stages)
+   (windows :initarg :windows :initform 11 :accessor windows)))
 
 (defmethod print-object ((obj fep-morph) stream)
   (if *print-readably*
@@ -304,7 +304,7 @@
    (am1-bcc-charges :initarg :am1-bcc-charges :accessor am1-bcc-charges)))
 
 (defun print-object-readably-with-slots (obj stream)
-  (format stream "#$(~a " (class-name (class-of obj)))
+  (format stream "#$(~s " (class-name (class-of obj)))
   (loop for slot in (clos:class-slots (class-of obj))
         for slot-name = (clos:slot-definition-name slot)
         for initargs = (clos:slot-definition-initargs slot)
@@ -325,13 +325,13 @@
   name)
 
 
-(defun calculate-timask (calculation fep-structure)
+(defun calculate-timask (calculation fep-structure morph)
   (with-output-to-string (sout)
     (let ((residue-names (append (core-residue-names fep-structure)
                                  (mutate-residue-names fep-structure))))
       (format sout "~{:~a~^|~}" (mapcar (lambda (name) (pdb-safe-residue-name calculation name)) residue-names)))))
 
-(defun calculate-scmask (calculation fep-structure)
+(defun calculate-scmask (calculation fep-structure morph)
   (with-output-to-string (sout)
     (let ((residue-names (mutate-residue-names fep-structure))
           (molecule (molecule fep-structure)))
@@ -610,7 +610,7 @@
 
 
 
-(defun build-initial-jobs (calculation &optional (connections 3))
+(defun build-initial-jobs (calculation &key (connections 3) stages windows)
   (let ((jobs (make-instance 'job-graph)))
     (let* ((unsorted-feps (copy-list (ligands calculation)))
            (sorted-feps (sort unsorted-feps #'< :key (lambda (x) (chem:number-of-atoms (drawing x))))))
@@ -618,7 +618,11 @@
             for added = (nodes jobs)
             do (push fep (nodes jobs))
             do (loop for other in (subseq added 0 (min (length added) connections))
-                     do (push (make-instance 'fep-morph :source fep :target other) (morphs jobs)))))
+                     for stages-lambda = (append (when stages
+                                                   (list :stages stages))
+                                                 (when windows
+                                                   (list :windows windows)))
+                     do (push (apply #'make-instance 'fep-morph :source fep :target other stages-lambda) (morphs jobs)))))
     (setf (jobs calculation) jobs)))
 
 #+(or)
@@ -654,6 +658,8 @@ Otherwise return NIL."
                            collect job)))
         (format t "About to set outputs result -> ~s~%" result)
         (setf (outputs jupyter-job) outputs)
+        (connect-graph jupyter-job)
+        (mapc #'connect-graph result)
         result))))
 
 (defun check-am1-calculations (calculation)
@@ -686,7 +692,7 @@ Otherwise return NIL."
     (let ((count 0))
       (loop for ligand in (ligands calculation)
             for sqm-out = (make-instance 'sqm-output-file :name (name ligand))
-            do (let ((am1-charge (charges::read-am1-charges (node-pathname sqm-out) (fep::atom-order (nth count calculation)))))
+            do (let ((am1-charge (charges::read-am1-charges (node-pathname sqm-out) (fep::atom-order ligand))))
                  (setf (am1-charges ligand) am1-charge))
             do (format t "file ~a done~%" (name ligand))
             do (incf count)))))
@@ -741,5 +747,11 @@ Otherwise return NIL."
   "Load a feps database and register the topologys"
   (let ((feps (cando:load-cando filename)))
     (cando:register-topology (chem:get-name (core-topology feps)) (core-topology feps))
-    (loop for topology in (side-topologys feps)
-          do (cando:register-topology (chem:get-name topology) topology))))
+    (maphash (lambda (part-name name-topologys)
+               (format t "name-topologys = ~s~%" name-topologys)
+               (loop for (name . topology) in name-topologys
+                     do (format t "Registering ~a ~a~%" name topology)
+                     do (cando:register-topology name topology)))
+             (side-topologys feps))
+    feps))
+

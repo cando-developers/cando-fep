@@ -45,6 +45,7 @@
 
 (defpackage #:fep
   (:use #:common-lisp)
+  (:shadowing-import-from :chem "ATOM")
   (:export
    #:calculation
    #:jobs
@@ -60,7 +61,10 @@
    #:name
    #:extension
    #:morph-string
+   #:node-pathname
    #:morph
+   #:stages
+   #:windows
    #:inputs
    #:outputs
    #:users
