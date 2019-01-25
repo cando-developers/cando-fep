@@ -21,23 +21,23 @@
   (let ((*package* (find-package :keyword)))
     (cl:format nil "~{~s~%~}"
                '((load "source-dir:extensions;cando;src;lisp;start-cando.lisp")
-                 (ql:quickload :feps)
+                 (ql:quickload :fep)
                  (in-package :cando-user)
+                 (leap:setup-amber-paths)
                  (leap:source "leaprc.water.tip3p")
                  (leap:load-off "solvents.lib")
                  (leap:load-off "atomic_ions.lib")
-                 (use-package :feps)
                  (defparameter *feps* (fep:load-feps "%input%"))
                  (defparameter *receptor* (first (fep:receptors *feps*)))
-                 (defparameter *side-name* %side-name%)
-                 (defparameter *morph* (find-morph-with-name %morph-name% *feps*))
+                 (defparameter *side-name* '%side-name%)
+                 (defparameter *morph* (find-morph-with-name '%morph-name% *feps*))
                  (defparameter *source* (fep:source *morph*))
                  (defparameter *target* (fep:target *morph*))
+                 (defparameter *ligands* (cando:combine (fep:molecule *source*)
+                                                        (fep:molecule *target*)))
                  (if (eq *side-name* ':ligands)
-                     (defparameter *system* (cando:combine (chem:matter-copy *source*)
-                                                           (chem:matter-copy *target*)))
-                     (defparameter *system* (cando:combine (chem:matter-copy *source*)
-                                                           (chem:matter-copy *target*)
+                     (defparameter *system* (chem:matter-copy *ligands*))
+                     (defparameter *system* (cando:combine (chem:matter-copy *ligands*)
                                                            (chem:matter-copy *receptor*))))
                  (leap:solvate-box *system*
                   (leap.core:lookup-variable (solvent-box *feps*))
@@ -200,8 +200,8 @@ outtraj %target% onlyframes 1
 
    icfe = 1, clambda = %L%, scalpha = 0.5, scbeta = 12.0,
    logdvdl = 0,
-   timask1 = ':1', timask2 = ':2',
-   %FE%
+   timask1 = '%timask1%', timask2 = '%timask2%',
+   ifsc = %ifsc%, crgmask = '%crgmask%'
  /
 
  &ewald
@@ -232,8 +232,8 @@ outtraj %target% onlyframes 1
    logdvdl = 1,
    ifmbar = 1, bar_intervall = 1000, mbar_states = 11,
    mbar_lambda = 0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0,
-   timask1 = ':1', timask2 = ':2',
-   %FE%
+   timask1 = '%timask1%', timask2 = '%timask2%',
+   ifsc = %ifsc%, crgmask = '%crgmask%'
  /
 
  &ewald
@@ -611,26 +611,27 @@ its for and then create a new class for it."))
 
 (defgeneric substitutions (calculation job node-file))
 
-(defmethod substitutions (calculation job (node-file morph-side-script))
-  (let ((morph (morph node-file)))
-    (list* (cons "%morph-name%" (format nil "~s" (morph-string morph)))
-           (cons "%side-name%" (format nil "~s" (side node-file)))
-           (cons "%timask1%" (calculate-timask calculation (source morph) morph))
-           (cons "%timask2%" (calculate-timask calculation (target morph) morph))
-           (cons "%scmask1%" (calculate-scmask calculation (source morph) morph))
-           (cons "%scmask2%" (calculate-scmask calculation (target morph) morph))
-           (job-substitutions job))))
-
-(defmethod substitutions (calculation job (node-file cando-script-file))
+(defmethod substitutions (calculation job (node-file node-file))
   (job-substitutions job))
 
+(defmethod substitutions (calculation job (node-file morph-file))
+  (list*
+   (let* ((morph (morph node-file))
+          (morph-mask (calculate-masks morph (mask-method calculation))))
+     (list* (cons "%morph-name%" (format nil "~s" (morph-string morph)))
+            (mask-substitutions morph-mask)))
+   (call-next-method)))
 
-(defmethod substitutions (calculation job (node-file morph-side-stage-script-file))
-  (job-substitutions job))
+(defmethod substitutions (calculation job (node-file morph-side-file))
+  (list* (cons "%side-name%" (format nil "~s" (side node-file)))
+         (call-next-method)))
 
-(defmethod substitutions (calculation job (node-file morph-side-stage-lambda-amber-script))
-  (job-substitutions job))
+(defmethod substitutions (calculation job (node-file morph-side-stage-file))
+  (list* (cons "%stage-name%" (format nil "~s" (stage node-file)))
+         (call-next-method)))
 
+(defmethod substitutions (calculation job (node-file morph-side-stage-lambda-file))
+  (error "Do the lambda stuff here"))
 
 ;;; ------------------------------------------------------------
 ;;;
@@ -1020,14 +1021,20 @@ added to inputs and outputs but not option-inputs or option-outputs"
 
 
 
-(defun generate-all-code (calculation work-list)
+(defun generate-all-code (calculation work-list final-outputs)
   (with-top-directory (calculation)
     (let ((visited-nodes (make-hash-table))
           (makefile-pathname (ensure-directories-exist (merge-pathnames "makefile"))))
       (format t "Writing makefile to ~a~%" (translate-logical-pathname makefile-pathname))
-      (with-open-file (makefile makefile-pathname :direction :output :if-exists :supersede)
-        (loop for job in work-list
-              do (generate-code calculation job  makefile visited-nodes))))))
+      (let ((body (with-output-to-string (makefile)
+                    (loop for job in work-list
+                          do (generate-code calculation job  makefile visited-nodes)))))
+        (with-open-file (makefile makefile-pathname :direction :output :if-exists :supersede)
+          (format makefile "all : ~{~a ~}~%" (mapcar (lambda (file) (node-pathname file)) final-outputs))
+          (format makefile "~aecho DONE~%" #\tab)
+          (format makefile "~%")
+          (write-string body makefile)
+          (terpri makefile))))))
 
 #+(or)
 (defun generate-scripts (ti-path &key side (directory *default-pathname-defaults*) makefile-stream)

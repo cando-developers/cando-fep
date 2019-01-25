@@ -325,32 +325,10 @@
   name)
 
 
-(defun calculate-timask (calculation fep-structure morph)
-  (with-output-to-string (sout)
-    (let ((residue-names (append (core-residue-names fep-structure)
-                                 (mutate-residue-names fep-structure))))
-      (format sout "~{:~a~^|~}" (mapcar (lambda (name) (pdb-safe-residue-name calculation name)) residue-names)))))
-
-(defun calculate-scmask (calculation fep-structure morph)
-  (with-output-to-string (sout)
-    (let ((residue-names (mutate-residue-names fep-structure))
-          (molecule (molecule fep-structure)))
-      (format sout "~{~a~^|~}"
-              (loop for residue-name in residue-names
-                    for residue = (chem:get-first-residue-with-name molecule residue-name)
-                    collect (with-output-to-string (sinner)
-                              (format sinner
-                                      ":~a@~{~a~^,~}"
-                                      (pdb-safe-residue-name calculation residue-name)
-                                      (chem:map-atoms 'list
-                                                      (lambda (atom)
-                                                        (pdb-safe-atom-name calculation (chem:get-name atom)))
-                                                      residue))))))))
-
-
 (defclass calculation ()
   ((receptors :initform nil :accessor receptors)
    (ligands :initarg :ligands :accessor ligands)
+   (mask-method :initform :default :initarg :mask-method :accessor mask-method)
    (core-topology :initarg :core-topology :accessor core-topology)
    (side-topologys :initarg :side-topologys :accessor side-topologys)
    (jobs :initarg :jobs :accessor jobs)
@@ -622,7 +600,10 @@
                                                    (list :stages stages))
                                                  (when windows
                                                    (list :windows windows)))
-                     do (push (apply #'make-instance 'fep-morph :source fep :target other stages-lambda) (morphs jobs)))))
+                     ;; Force a direction for the calculation AA->AB and not AB->AA
+                     do (if (string< (string (name fep)) (string (name other)))
+                            (push (apply #'make-instance 'fep-morph :source fep :target other stages-lambda) (morphs jobs))
+                            (push (apply #'make-instance 'fep-morph :source other :target fep stages-lambda) (morphs jobs))))))
     (setf (jobs calculation) jobs)))
 
 #+(or)
@@ -741,7 +722,80 @@ Otherwise return NIL."
     (let (match)
       (when (setf match (chem:matches smarts atom))
         (return-from pattern-atoms (chem:tags-as-hashtable match))))))
- 
+
+(defclass ti-mask ()
+  ((source :initarg :source :accessor source)
+   (source-timask :initarg :source-timask :accessor source-timask)
+   (source-scmask :initarg :source-scmask :accessor source-scmask)
+   (target :initarg :target :accessor target)
+   (target-timask :initarg :target-timask :accessor target-timask)
+   (target-scmask :initarg :target-scmask :accessor target-scmask)))
+
+
+(defgeneric calculate-masks (morph kind)
+  (:documentation "Use the source and target to calculate the masks. The kind argument allows the 
+user to define new ways to calculate masks"))
+
+
+(defun unique-residue-with-name (molecule name)
+  (let (residues)
+    (cando:do-residues (res molecule)
+      (when (eq (chem:get-name res) name)
+        (push res residues)))
+    (if (= (length residues) 1)
+        (first residues)
+        (error "More than one residue in ~s has the name ~s" molecule name))))
+    
+
+(defmethod calculate-masks (morph (method (eql ':default)))
+  "Really simple mask - the core and mutated residues are timask and the mutated residues are the scmask.
+METHOD controls how the masks are calculated"
+  (let ((source (source morph))
+        (target (target morph)))
+    (let ((source-core-residues (mapcar (lambda (name) (unique-residue-with-name (molecule source) name))
+                                        (core-residue-names source)))
+          (source-mutate-residues (mapcar (lambda (name) (unique-residue-with-name (molecule source) name))
+                                          (mutate-residue-names source)))
+          (target-core-residues (mapcar (lambda (name) (unique-residue-with-name (molecule target) name))
+                                        (core-residue-names target)))
+          (target-mutate-residues (mapcar (lambda (name) (unique-residue-with-name (molecule target) name))
+                                          (mutate-residue-names target)))
+          (combined-aggregate (cando:combine (molecule source) (molecule target))))
+      (let ((sequenced-residues (chem:map-residues 'vector #'identity combined-aggregate))) ; vector of residues in order they will appear in topology file
+        (let ((source-timask-residue-indices (loop for residue in (append source-core-residues source-mutate-residues)
+                                                   collect (1+ (position residue sequenced-residues))))
+              (source-scmask-residue-indices (loop for residue in source-mutate-residues
+                                                   collect (1+ (position residue sequenced-residues))))
+              (target-timask-residue-indices (loop for residue in (append target-core-residues target-mutate-residues)
+                                                   collect (1+ (position residue sequenced-residues))))
+              (target-scmask-residue-indices (loop for residue in target-mutate-residues
+                                                   collect (1+ (position residue sequenced-residues)))))
+          (make-instance 'ti-mask
+                         :source source
+                         :source-timask (format nil "~{:~d~^|~}" source-timask-residue-indices)
+                         :source-scmask (format nil "~{:~d~^|~}" source-scmask-residue-indices)
+                         :target target
+                         :target-timask (format nil "~{:~d~^|~}" target-timask-residue-indices)
+                         :target-scmask (format nil "~{:~d~^|~}" target-scmask-residue-indices)))))))
+
+(defun mask-substitutions (mask &optional stage)
+  (unless (typep stage '(member nil :vdw-bonded :decharge :recharge))
+    (error "stage ~s must be one of nil :vdw-bonded :decharge :recharge" stage))
+  (list* (cons "%timask1%" (source-timask mask))
+         (cons "%scmask1%" (source-scmask mask))
+         (cons "%timask2%" (target-timask mask))
+         (cons "%scmask2%" (target-scmask mask))
+         (cond
+           ((eq stage :decharge)
+            (list (cons "%crgmask%" (target-scmask mask))
+                  (cons "%ifsc%" "0")))
+           ((eq stage :vdw-bonded)
+            (list (cons "%crgmask%" (format nil "~a|~a" (source-scmask mask) (target-scmask mask))) 
+                  (cons "%ifsc%" "1")))
+           ((eq stage :recharge)
+            (list (cons "%crgmask%" (source-scmask mask))
+                  (cons "%ifsc%" "0")))
+           (t nil))))
 
 (defun load-feps (filename)
   "Load a feps database and register the topologys"
@@ -754,4 +808,5 @@ Otherwise return NIL."
                      do (cando:register-topology name topology)))
              (side-topologys feps))
     feps))
+
 
