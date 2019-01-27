@@ -178,38 +178,41 @@
                                                         :inputs inputs
                                                         :outputs outputs
                                                         :makefile-clause (standard-cando-makefile-clause script))))
-                      do (let (decharge-jobs vdw-jobs recharge-jobs)
-                           (loop for window-index from 0 below (windows morph)
-                                 for window = (/ (float window-index) (1- (windows morph)))
-                                 for lambda-label = (format nil "~5,3f" window)
+                      do (let (decharge-jobs
+                               vdw-jobs
+                               recharge-jobs
+                               (lambda-values (loop for window-index from 0 below (windows morph)
+                                                    collect (/ (float window-index) (1- (windows morph))))))
+                           (loop for lambda-value in lambda-values
+                                 for lambda-label = (format nil "~5,3f" lambda-value)
                                  do (case stage
                                       (:decharge (let* ((input-topology-file (output-file stage-job :decharge-topology))
                                                         (input-coordinate-file (output-file stage-job :decharge-coordinates))
-                                                        (heat-job (make-heat-ti-step morph side stage lambda-label
+                                                        (heat-job (make-heat-ti-step morph side stage lambda-label lambda-values
                                                                                      :input-topology-file input-topology-file
                                                                                      :input-coordinate-file input-coordinate-file))
                                                         (input-coordinate-file (output-file heat-job :-r)))
-                                                   (push (make-ti-step morph side stage lambda-label
+                                                   (push (make-ti-step morph side stage lambda-label lambda-values
                                                                        :input-topology-file input-topology-file
                                                                        :input-coordinate-file input-coordinate-file)
                                                          decharge-jobs)))
                                       (:vdw-bonded (let* ((input-topology-file input-topology-file)
                                                           (input-coordinate-file (output-file morph-side-prepare-job :-r))
-                                                          (heat-job (make-heat-ti-step morph side stage lambda-label
+                                                          (heat-job (make-heat-ti-step morph side stage lambda-label lambda-values
                                                                                        :input-topology-file input-topology-file
                                                                                        :input-coordinate-file input-coordinate-file))
                                                           (input-coordinate-file (output-file heat-job :-r)))
-                                                     (push (make-ti-step morph side stage lambda-label
+                                                     (push (make-ti-step morph side stage lambda-label lambda-values
                                                                          :input-topology-file input-topology-file
                                                                          :input-coordinate-file input-coordinate-file)
                                                            vdw-jobs)))
                                       (:recharge (let* ((input-topology-file (output-file stage-job :recharge-topology))
                                                         (input-coordinate-file (output-file stage-job :recharge-coordinates))
-                                                        (heat-job (make-heat-ti-step morph side stage lambda-label
+                                                        (heat-job (make-heat-ti-step morph side stage lambda-label lambda-values
                                                                                      :input-topology-file input-topology-file
                                                                                      :input-coordinate-file input-coordinate-file))
                                                         (input-coordinate-file (output-file heat-job :-r)))
-                                                   (push (make-ti-step morph side stage lambda-label
+                                                   (push (make-ti-step morph side stage lambda-label lambda-values
                                                                        :input-topology-file input-topology-file
                                                                        :input-coordinate-file input-coordinate-file)
                                                          recharge-jobs)))))
@@ -263,16 +266,17 @@
       morph-jobs)))
 
 (defmethod generate-jobs (calculation)
-  (with-top-directory (calculation)
+  (let ((*default-pathname-defaults* (merge-pathnames (top-directory calculation) *default-pathname-defaults*)))
+    (format t "FUCK ~s~%" *default-pathname-defaults*)
     (let* ((jupyter-job (make-instance 'jupyter-job))
            (am1-jobs (setup-am1-calculations jupyter-job calculation))
-           (feps-precharge (make-instance 'feps-precharge-file)))
-      (cando:save-cando calculation (node-pathname feps-precharge))
+           (feps-precharge (make-instance 'feps-file :name "precharge")))
+      (fep:save-feps calculation (node-pathname feps-precharge))
       (push (make-instance 'argument :option :feps-precharge :node feps-precharge) (outputs jupyter-job))
       (let* ((script (make-instance 'cando-script-file
                                     :name "charge"
                                     :script *cando-charge-script*))
-             (feps-out (make-instance 'feps-postcharge-file)))
+             (feps-out (make-instance 'feps-file :name "postcharge")))
         (connect-graph
          (make-instance 'cando-job
                         :inputs (apply #'arguments

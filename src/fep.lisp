@@ -1,7 +1,5 @@
 (in-package :fep)
 
-
-
 (defun core-group-p (group)
   (loop for atom in group
         for label = (chem:matter-get-property-or-default atom :label nil)
@@ -265,13 +263,24 @@
 (defun incf-fep-time ()
   (incf *fep-time*))
 
+(defun print-object-readably-with-slots (obj stream)
+  (format stream "#$(~s " (class-name (class-of obj)))
+  (loop for slot in (clos:class-slots (class-of obj))
+        for slot-name = (clos:slot-definition-name slot)
+        for initargs = (clos:slot-definition-initargs slot)
+        if (and (car initargs) (slot-boundp obj slot-name))
+          do (format stream "~s ~s " (car initargs) (slot-value obj slot-name)))
+  (format stream ") "))
+
 (defclass job-graph ()
-  ((nodes :initform nil :accessor nodes)
-   (morphs :initform nil :accessor morphs)))
+  ((nodes :initform nil :initarg :nodes :accessor nodes)
+   (morphs :initform nil :initarg :morphs :accessor morphs)))
 
 (defmethod print-object ((obj job-graph) stream)
   (if *print-readably*
-      (print-object-readably-with-slots obj stream)
+      (progn
+        (format t "Printing job-graph~%")
+        (print-object-readably-with-slots obj stream))
       (print-unreadable-object (obj stream)
         (format stream "~a" (class-name (class-of obj))))))
 
@@ -296,21 +305,16 @@
 (defclass fep-structure ()
   ((name :initarg :name :accessor name)
    (drawing :initarg :drawing :accessor drawing)
-   (core-residue-names :initarg :core-residue-names :accessor core-residue-names)
-   (mutate-residue-names :initarg :mutate-residue-names :accessor mutate-residue-names)
+   (core-residue :initarg :core-residue :accessor core-residue)
+   (core-residue-name :initarg :core-residue-name :accessor core-residue-name)
+   (side-chain-residue-names :initarg :side-chain-residue-names :accessor side-chain-residue-names)
+   (core-atoms :initarg :core-atoms :accessor core-atoms)
+   (side-chain-atoms :initarg :side-chain-atoms :accessor side-chain-atoms)
    (molecule :initarg :molecule :accessor molecule)
    (atom-order :initarg :atom-order :accessor atom-order)
    (am1-charges :initarg :am1-charges :accessor am1-charges)
    (am1-bcc-charges :initarg :am1-bcc-charges :accessor am1-bcc-charges)))
 
-(defun print-object-readably-with-slots (obj stream)
-  (format stream "#$(~s " (class-name (class-of obj)))
-  (loop for slot in (clos:class-slots (class-of obj))
-        for slot-name = (clos:slot-definition-name slot)
-        for initargs = (clos:slot-definition-initargs slot)
-        if (and (car initargs) (slot-boundp obj slot-name))
-          do (format stream "~s ~s " (car initargs) (slot-value obj slot-name)))
-  (format stream ") "))
 
 (defmethod print-object ((obj fep-structure) stream)
   (if *print-readably*
@@ -327,17 +331,17 @@
 
 (defclass calculation ()
   ((receptors :initform nil :accessor receptors)
+   (receptor-files :initform nil :initarg :receptor-files :accessor receptor-files)
    (ligands :initarg :ligands :accessor ligands)
    (mask-method :initform :default :initarg :mask-method :accessor mask-method)
    (core-topology :initarg :core-topology :accessor core-topology)
    (side-topologys :initarg :side-topologys :accessor side-topologys)
    (jobs :initarg :jobs :accessor jobs)
    (ti-lambdas :initarg :ti-lambdas :initform 11 :accessor ti-lambdas)
-   (top-directory :initform (merge-pathnames (make-pathname :directory (list :relative
-                                                                             "jobs")))
+   (top-directory :initform (make-pathname :directory (list :relative "jobs"))
                   :initarg :top-directory :accessor top-directory )
    (stage :initform 0 :initarg :stage :accessor stage)
-   (residue-name-to-pdb :initform (make-hash-table) :accessor residue-name-to-pdb)
+   (residue-name-to-pdb :initform (make-hash-table) :initarg :residue-name-to-pdb :accessor residue-name-to-pdb)
    ))
 
 (defmethod print-object ((obj calculation) stream)
@@ -353,9 +357,17 @@
       (print-unreadable-object (obj stream)
         (format stream "feps"))))
 
+(defun find-morph-with-name (name calculation)
+  (loop for morph in (morphs (jobs calculation))
+        when (string= (morph-string morph) (string name))
+          do (return-from find-morph-with-name morph))
+  (error "Could not find morph with name ~s in calculation with morphs: ~s" name (mapcar (lambda (m) (name m)) (morphs (jobs calculation)))))
+
+(defparameter *top-guard* nil)
+
+    
 (defmacro with-top-directory ((calculation) &body body)
-  `(let ((*default-pathname-defaults*
-           (merge-pathnames (top-directory ,calculation))))
+  `(progn
      ,@body))
 
 (defmethod make-load-form ((object calculation) &optional env)
@@ -368,10 +380,12 @@
     (let ((new-name (format nil "~a~a" element-name (incf (gethash element-name counters 0)))))
       (intern new-name :keyword))))
 
-#+(or)
-(defun combine-into-single-residue (molecule core-residue)
+(defun combine-into-single-residue (molecule core-residue-name)
   (let* ((residues (chem:map-residues 'list #'identity molecule))
+         (core-residue (unique-residue-with-name molecule core-residue-name))
          (side-residues (remove core-residue residues))
+         (_ (when (= (length side-residues) (length residues))
+              (error "The core residue ~s was not removed from ~s" core-residue residues)))
          (unique-atom-name-strings (chem:map-atoms 'list (lambda (latom) (string (chem:get-name latom))) core-residue))
          (element-name-counters (let ((counters (make-hash-table :test #'equal)))
                                   (loop for name in unique-atom-name-strings
@@ -428,7 +442,7 @@
             for core-residue = (let ((res (chem:build-residue-single-name core-topology)))
                                  (set-coordinates-for-residue res (gethash core-topology topology-to-residue))
                                  res)
-            collect (let (mutate-residue-names)
+            collect (let (side-chain-residue-names)
                       (chem:add-matter molecule core-residue)
                       (loop for (name . top) in cart
                             for side-residue = (let ((res (chem:build-residue-single-name top)))
@@ -437,8 +451,9 @@
                             for in-plug = (chem:get-in-plug top)
                             for in-plug-name = (chem:get-name in-plug)
                             for out-plug-name = (chem:other-plug-name in-plug-name)
+                            for side-atoms = (chem:map-atoms 'list #'identity side-residue)
                             do (progn
-                                 (push (chem:get-name side-residue) mutate-residue-names)
+                                 (push (chem:get-name side-residue) side-chain-residue-names)
                                  (chem:add-matter molecule side-residue)
                                  (maphash (lambda (name number)
                                             (let ((atom (chem:atom-with-name core-residue name)))
@@ -451,12 +466,11 @@
                                                         top
                                                         side-residue
                                                         in-plug-name)))
-                      #+(or)(combine-into-single-residue molecule core-residue)
                       (set-stereocenters molecule)
                       (make-instance 'fep-structure :name name :drawing molecule
-                                                    :core-residue-names (list (chem:get-name core-residue))
-                                                    :mutate-residue-names mutate-residue-names))))))
-
+                                                    :core-residue core-residue
+                                                    :core-residue-name (chem:get-name core-residue)
+                                                    :side-chain-residue-names side-chain-residue-names))))))
 
 (defun setup-ligands (feps sketch &key verbose)
   (let ((ligands (multiple-value-bind (core-topology side-chains topology-to-residue map-names-numbers)
@@ -464,6 +478,20 @@
                    (setf (core-topology feps) core-topology)
                    (setf (side-topologys feps) side-chains)
                    (build-feps core-topology side-chains topology-to-residue map-names-numbers))))
+    (loop for ligand in ligands
+          for mol = (chem:matter-copy (drawing ligand))
+          for side-chain-atoms = nil
+          do (chem:fill-in-implicit-hydrogens mol)
+             (ensure-unique-hydrogen-names mol)
+             (cando:build-unbuilt-hydrogens mol)
+             (setf (molecule ligand) mol)
+             (loop for side-chain-name in (side-chain-residue-names ligand)
+                   for side-chain-residue = (unique-residue-with-name mol side-chain-name)
+                   do (cando:do-atoms (a side-chain-residue)
+                        (push a side-chain-atoms)))
+             (setf (side-chain-atoms ligand) side-chain-atoms)
+             (combine-into-single-residue mol (core-residue-name ligand))
+          )
     (setf (ligands feps) ligands)))
 
 (defun layout-ligands (calculation &key (xdelta 15.0) (ydelta 15.0) (accessor 'drawing))
@@ -493,7 +521,7 @@
     (chem:add-matter agg mol1)
     agg))
 
-#+(or)(defun ensure-unique-hydrogen-names (molecule)
+(defun ensure-unique-hydrogen-names (molecule)
   (let ((hydrogen-counter 0))
     (cando:do-atoms (atom1 molecule)
       (when (eq (chem:get-element atom1) :H)
@@ -503,11 +531,8 @@
 (defun build-ligands (calculations)
   (let ((feps (ligands calculations)))
     (loop for fep in feps
-          for mol = (chem:matter-copy (drawing fep))
+          for mol = (molecule fep)
           do (format t "Building ~a~%" (name fep))
-             (chem:fill-in-implicit-hydrogens mol)
-             #+(or)(ensure-unique-hydrogen-names mol)
-             (cando:build-unbuilt-hydrogens mol)
              (funcall (find-symbol "ASSIGN-ATOM-TYPES" :leap) mol)
              (setf (molecule fep) mol)
           do (format t "build-structures fep: ~a   map-atoms: ~a~%" fep (sorted-map-atoms fep)))))
@@ -744,7 +769,7 @@ user to define new ways to calculate masks"))
         (push res residues)))
     (if (= (length residues) 1)
         (first residues)
-        (error "More than one residue in ~s has the name ~s" molecule name))))
+        (error "Only one residue in ~s can have the name ~s - found ~s" molecule name residues))))
     
 
 (defmethod calculate-masks (morph (method (eql ':default)))
@@ -752,31 +777,25 @@ user to define new ways to calculate masks"))
 METHOD controls how the masks are calculated"
   (let ((source (source morph))
         (target (target morph)))
-    (let ((source-core-residues (mapcar (lambda (name) (unique-residue-with-name (molecule source) name))
-                                        (core-residue-names source)))
-          (source-mutate-residues (mapcar (lambda (name) (unique-residue-with-name (molecule source) name))
-                                          (mutate-residue-names source)))
-          (target-core-residues (mapcar (lambda (name) (unique-residue-with-name (molecule target) name))
-                                        (core-residue-names target)))
-          (target-mutate-residues (mapcar (lambda (name) (unique-residue-with-name (molecule target) name))
-                                          (mutate-residue-names target)))
+    (let ((source-core-residue (unique-residue-with-name (molecule source) (core-residue-name source)))
+          (target-core-residue (unique-residue-with-name (molecule target) (core-residue-name target)))
+          (source-mutate-atoms (side-chain-atoms source))
+          (target-mutate-atoms (side-chain-atoms target))
           (combined-aggregate (cando:combine (molecule source) (molecule target))))
       (let ((sequenced-residues (chem:map-residues 'vector #'identity combined-aggregate))) ; vector of residues in order they will appear in topology file
-        (let ((source-timask-residue-indices (loop for residue in (append source-core-residues source-mutate-residues)
-                                                   collect (1+ (position residue sequenced-residues))))
-              (source-scmask-residue-indices (loop for residue in source-mutate-residues
-                                                   collect (1+ (position residue sequenced-residues))))
-              (target-timask-residue-indices (loop for residue in (append target-core-residues target-mutate-residues)
-                                                   collect (1+ (position residue sequenced-residues))))
-              (target-scmask-residue-indices (loop for residue in target-mutate-residues
-                                                   collect (1+ (position residue sequenced-residues)))))
+        (let ((source-timask-residue-index (1+ (position source-core-residue sequenced-residues)))
+              (source-scmask-atom-names (loop for atom in source-mutate-atoms
+                                              collect (chem:get-name atom)))
+              (target-timask-residue-index (1+ (position target-core-residue sequenced-residues)))
+              (target-scmask-atom-names (loop for atom in target-mutate-atoms
+                                              collect (chem:get-name atom))))
           (make-instance 'ti-mask
                          :source source
-                         :source-timask (format nil "~{:~d~^|~}" source-timask-residue-indices)
-                         :source-scmask (format nil "~{:~d~^|~}" source-scmask-residue-indices)
+                         :source-timask (format nil ":~d" source-timask-residue-index)
+                         :source-scmask (format nil ":~d@~{~d~^,~}" source-timask-residue-index source-scmask-atom-names)
                          :target target
-                         :target-timask (format nil "~{:~d~^|~}" target-timask-residue-indices)
-                         :target-scmask (format nil "~{:~d~^|~}" target-scmask-residue-indices)))))))
+                         :target-timask (format nil ":~d" target-timask-residue-index)
+                         :target-scmask (format nil ":~d@~{~d~^,~}" target-timask-residue-index target-scmask-atom-names)))))))
 
 (defun mask-substitutions (mask &optional stage)
   (unless (typep stage '(member nil :vdw-bonded :decharge :recharge))
@@ -796,17 +815,5 @@ METHOD controls how the masks are calculated"
             (list (cons "%crgmask%" (source-scmask mask))
                   (cons "%ifsc%" "0")))
            (t nil))))
-
-(defun load-feps (filename)
-  "Load a feps database and register the topologys"
-  (let ((feps (cando:load-cando filename)))
-    (cando:register-topology (chem:get-name (core-topology feps)) (core-topology feps))
-    (maphash (lambda (part-name name-topologys)
-               (format t "name-topologys = ~s~%" name-topologys)
-               (loop for (name . topology) in name-topologys
-                     do (format t "Registering ~a ~a~%" name topology)
-                     do (cando:register-topology name topology)))
-             (side-topologys feps))
-    feps))
 
 

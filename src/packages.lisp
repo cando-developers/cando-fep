@@ -76,6 +76,7 @@
    #:node-file
    #:morph-side-file
    #:load-feps
+   #:save-feps
    #:source
    #:target
    #:morphs
