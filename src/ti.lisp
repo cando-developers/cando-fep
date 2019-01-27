@@ -12,7 +12,7 @@
                  (defparameter *feps* (fep:load-feps "%feps%"))
                  (read-am1-charges *feps*)
                  (calculate-am1-bcc-charges *feps*)
-                 (cando:save-cando *feps* "%output%")
+                 (fep:save-feps *feps* "%output%")
                  (core:exit)
                  ))))
 
@@ -544,6 +544,11 @@ its for and then create a new class for it."))
 (defmethod node-pathname :around ((node node-file))
   (ensure-directories-exist (call-next-method)))
 
+(defmethod node-pathname ((node feps-file))
+  (make-pathname :directory (list :relative (string-downcase (name node)))
+                 :name "feps"
+                 :type (extension node)))
+
 (defmethod node-pathname ((node node-file))
   (make-pathname :name (string-downcase (name node))
                  :type (extension node)))
@@ -1036,76 +1041,6 @@ added to inputs and outputs but not option-inputs or option-outputs"
           (write-string body makefile)
           (terpri makefile))))))
 
-#+(or)
-(defun generate-scripts (ti-path &key side (directory *default-pathname-defaults*) makefile-stream)
-  (let* ((steps (steps ti-path))
-         (sorted-steps (sort (copy-list steps) #'< :key (lambda (x) (lam x))))
-         (unique-lambdas (let (infos)
-                           (loop for s in sorted-steps
-                                 for info = (step-info s)
-                                 do (pushnew info infos :test #'eq))
-                           (mapcar #'lam (nreverse infos))))
-         (comma-separated-lambdas (format nil "~{~,3f,~} " unique-lambdas)))
-    (with-output-to-string (s)
-      (loop for step in sorted-steps
-            for lambda-val = (lam step)
-            for lambda-string = (format nil "~,3f" lambda-val)
-            for step-info = (step-info step)
-            for step-name = (step-name step-info)
-            with morph-string = (morph-string ti-path)
-            for epl = (format nil "~a/~a/~a" morph-string side step-name)
-            for substitutions = (list (cons "%e%" morph-string)
-                                      (cons "%s%" side)
-                                      (cons "%l%" lambda-string)
-                                      (cons "%lambdas,%" comma-separated-lambdas)
-                                      (cons "%epl%" epl)
-                                      (cons "%vdw-bonded%" *vdw-bonded*))
-            for one-dir = (merge-pathnames (pathname epl) directory)
-            for clause = (let* ((inputs (format nil "~{~a ~}" (mapcar (lambda (x) (file x)) (inputs step))))
-                                (outputs (format nil "~{~a ~}" (mapcar (lambda (x) (file x)) (outputs step))))
-                                (option-inputs (with-output-to-string (sout)
-                                                 (mapc (lambda (x) (format sout "~a ~a "
-                                                                           (option x)
-                                                                           (file x))) (inputs step))))
-                                (option-outputs (with-output-to-string (sout)
-                                                  (mapc (lambda (x) (format sout "~a ~a " (option x) (file x))) (outputs step))))
-                                (substitutions (list* (cons "%inputs%" inputs)
-                                                      (cons "%outputs%" outputs)
-                                                      (cons "%option-inputs%" option-inputs)
-                                                      (cons "%option-outputs%" option-outputs)
-                                                      substitutions)))
-                           (replace-all substitutions (makefile-clause step)))
-            for script = (replace-all substitutions (script step))
-            for amber-in = (replace-all substitutions (amber-in step))
-            do (format t "lambda-string = ~a  step = ~s~%" lambda-string step)
-               (ensure-directories-exist (merge-pathnames script))
-               (with-open-file (fout (merge-pathnames script) :direction :output :if-exists :supersede)
-                 (format fout "~a~%" amber-in))
-               (format makefile-stream "~a~%~%" clause)))))
-
-
-
-  
-#+(or)
-(defun generate-all-scripts (calculation work-list)
-  (let* ((*default-pathname-defaults* (merge-pathnames (pathname #p"meister/"))))
-    (ensure-directories-exist *default-pathname-defaults*)
-    ;; (cando:save-cando calculation "calculation")
-    (loop for job in work-list
-          for script = (script job)
-          for script = (specialize-script (script script))
-          do (with-open-file (fout (node-pathname script) :direction :output :if-exists :supersede)
-               (format fout "~a~%" script)))
-    #+(or)
-    (with-open-file (fout (make-pathname :name "makefile") :direction :output)
-      (loop for morph in (morphs (jobs calculation))
-            for morph-path = (make-ti-path (ti-lambdas calculation) (source morph) (target morph))
-            do (generate-scripts morph :makefile-stream fout :side "ligand"))
-      (loop for morph in (morphs (jobs calculation))
-            do (generate-scripts morph :makefile-stream fout :side "complex")))))
-
-
-
 #|
 (defparameter *morphs*
   (let* ((x1 (make-ti-compound "x1"))
@@ -1134,3 +1069,35 @@ added to inputs and outputs but not option-inputs or option-outputs"
 (generate-all-scripts *morphs*)
 
 |#
+
+
+
+(defun save-feps (feps feps-file)
+  (setf (receptor-files feps) nil)
+  (let* ((receptors (receptors feps)))
+    (loop for receptor in receptors
+          for receptor-file = (merge-pathnames (make-pathname :name (pathname-name (string (chem:get-name receptor)))
+                                                             :type "mol2" :defaults feps-file)
+                                              *default-pathname-defaults*)
+          do (format t "Writing receptor ~a to *d-p-d* -> ~s : ~s~%" (chem:get-name receptor) *default-pathname-defaults* (translate-logical-pathname receptor-file))
+             (format t "(node-pathname feps-file) -> ~s~%" feps-file)
+          do (chem:save-mol2 receptor (namestring receptor-file))
+             (push (pathname (enough-namestring receptor-file)) (receptor-files feps))))
+  (cando:save-cando feps feps-file))
+
+
+(defun load-feps (feps-file)
+  "Load a feps database and register the topologys"
+  (let ((feps (cando:load-cando feps-file)))
+    (loop for receptor-file in (receptor-files feps)
+          for receptor = (chem:load-mol2 (namestring receptor-file))
+          do (push receptor (receptors feps)))
+    (cando:register-topology (chem:get-name (core-topology feps)) (core-topology feps))
+    (maphash (lambda (part-name name-topologys)
+               (format t "name-topologys = ~s~%" name-topologys)
+               (loop for (name . topology) in name-topologys
+                     do (format t "Registering ~a ~a~%" name topology)
+                     do (cando:register-topology name topology)))
+             (side-topologys feps))
+    feps))
+
