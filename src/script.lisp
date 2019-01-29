@@ -267,7 +267,6 @@
 
 (defmethod generate-jobs (calculation)
   (let ((*default-pathname-defaults* (merge-pathnames (top-directory calculation) *default-pathname-defaults*)))
-    (format t "FUCK ~s~%" *default-pathname-defaults*)
     (let* ((jupyter-job (make-instance 'jupyter-job))
            (am1-jobs (setup-am1-calculations jupyter-job calculation))
            (feps-precharge (make-instance 'feps-file :name "precharge")))

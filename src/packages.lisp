@@ -97,7 +97,8 @@
    #:base-job
    #:amber-job-mixin
    #:cpptraj-job-mixin
-   #:pattern-atoms))
+   #:pattern-atoms
+   #:average-core-atom-positions))
 
 
 (defpackage #:fepdot

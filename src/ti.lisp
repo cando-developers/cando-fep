@@ -36,6 +36,7 @@
                  (defparameter *morph* (find-morph-with-name :%morph-name% *feps*))
                  (defparameter *source* (fep:source *morph*))
                  (defparameter *target* (fep:target *morph*))
+                 (fep:average-core-atom-positions *source* *target*)
                  (defparameter *ligands* (cando:combine (fep:molecule *source*)
                                                         (fep:molecule *target*)))
                  (if (eq *side-name* ':ligands)

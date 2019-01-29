@@ -485,13 +485,15 @@
              (ensure-unique-hydrogen-names mol)
              (cando:build-unbuilt-hydrogens mol)
              (setf (molecule ligand) mol)
+             (let ((core-atoms (chem:map-atoms 'list #'identity
+                                               (unique-residue-with-name mol (core-residue-name ligand)))))
+               (setf (core-atoms ligand) core-atoms))
              (loop for side-chain-name in (side-chain-residue-names ligand)
                    for side-chain-residue = (unique-residue-with-name mol side-chain-name)
                    do (cando:do-atoms (a side-chain-residue)
                         (push a side-chain-atoms)))
              (setf (side-chain-atoms ligand) side-chain-atoms)
-             (combine-into-single-residue mol (core-residue-name ligand))
-          )
+             (combine-into-single-residue mol (core-residue-name ligand)))
     (setf (ligands feps) ligands)))
 
 (defun layout-ligands (calculation &key (xdelta 15.0) (ydelta 15.0) (accessor 'drawing))
@@ -544,9 +546,7 @@
           for agg = (chem:make-aggregate nil)
           do (chem:add-matter agg mol)
           do (funcall (find-symbol "ASSIGN-ATOM-TYPES" :leap) agg)
-          do (energy:minimize agg ))))
-
-
+          do (energy:minimize agg :cg-tolerance 0.0001 :max-tn-steps 100 :tn-tolerance 0.00001))))
 
 (defun sorted-map-atoms (fep)
   (let ((molecule (molecule fep))
@@ -565,7 +565,7 @@
                                     'chem:restraint-anchor
                                     :atom moveable-atom
                                     :position pos
-                                    :weight 100.0)))
+                                    :weight 10000.0)))
             (chem:clear-restraints moveable-atom)
             (chem:add-restraint moveable-atom anchor-restraint)
             ;; Assign stereochemical restraint if there is one that matches
@@ -817,3 +817,22 @@ METHOD controls how the masks are calculated"
            (t nil))))
 
 
+
+(defun average-core-atom-positions (source target)
+  (loop for source-atom in (core-atoms source)
+        for target-atom = (or (find (chem:get-name source-atom)
+                                    (core-atoms target)
+                                    :test (lambda (src-atom-name tgt-atom) (eq src-atom-name
+                                                                               (chem:get-name tgt-atom))))
+                              (error "Could not find a matching target atom with the name ~s" (chem:get-name source-atom)))
+        for average-pos = (geom:v* (geom:v+ (chem:get-position source-atom)
+                                            (chem:get-position target-atom))
+                                   0.5)
+        for source-delta = (geom:vlength (geom:v- (chem:get-position source-atom)
+                                                  average-pos))
+        for target-delta = (geom:vlength (geom:v- (chem:get-position target-atom)
+                                                  average-pos))
+        do (when (or (> source-delta 0.2) (> target-delta 0.2))
+             (warn "The source atom ~s and target atom ~s are more than 0.2 A away from the average ~s~%" source-atom target-atom average-pos))
+           (chem:set-position source-atom average-pos)
+           (chem:set-position target-atom average-pos)))
