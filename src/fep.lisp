@@ -42,7 +42,7 @@
                                     num-bonds (1+ num-bonds))))
                       agg)
       (let* ((average-length (/ sum-lengths num-bonds))
-             (scale-factor (/ 10.5 average-length)))
+             (scale-factor (/ 1.5 average-length)))
         (format t "Average bond length: ~a~%" average-length)
         ;; Scale bonds to 1.5 Angstroms
         (chem:map-atoms nil (lambda (a)
@@ -496,9 +496,10 @@
              (combine-into-single-residue mol (core-residue-name ligand)))
     (setf (ligands feps) ligands)))
 
+
 (defun layout-ligands (calculation &key (xdelta 15.0) (ydelta 15.0) (accessor 'drawing))
-  (let* ((feps (copy-list (ligands calculation)))
-         (numx (floor (sqrt (length feps))))
+  (let* ((ligands (copy-list (ligands calculation)))
+         (numx (floor (sqrt (length ligands))))
          (numy (1+ numx))
          (agg (chem:make-aggregate nil)))
     (loop for ix from 0 below numx
@@ -506,7 +507,7 @@
           do (loop for iy from 0 below numy
                    for y = (* (- iy (floor (/ numy 2))) ydelta)
                    for transform = (geom:make-m4-translate (geom:vec x y 0.0))
-                   do (let ((fep (pop feps)))
+                   do (let ((fep (pop ligands)))
                         (when fep
                           (let ((molecule (chem:matter-copy (funcall accessor fep))))
                             (chem:apply-transform-to-atoms molecule transform)
@@ -836,3 +837,28 @@ METHOD controls how the masks are calculated"
              (warn "The source atom ~s and target atom ~s are more than 0.2 A away from the average ~s~%" source-atom target-atom average-pos))
            (chem:set-position source-atom average-pos)
            (chem:set-position target-atom average-pos)))
+
+
+(defun load-chem-draw-fep (filename)
+  (handler-bind ((warning #'muffle-warning))
+    (with-open-file (fin (open filename :direction :input))
+      (chem:make-chem-draw fin :add-hydrogens nil))))
+
+
+(defun scale-molecule (mol)
+  (let ((total-length 0.0)
+        (num-bonds 0))
+    (loop for ligand in (ligands calculation)
+          for mol = (drawing ligand)
+          do (chem:map-bonds nil (lambda (a1 a2 bo)
+                                   (let ((length (geom:vlength (geom:v- (chem:get-position a1)
+                                                                        (chem:get-position a2)))))
+                                     (when (> length 0.1)
+                                       (incf num-bonds)
+                                       (incf total-length length))))
+                             mol))
+    (let ((scale (/ 1.5 (/ total-length num-bonds))))
+      (loop for ligand in (ligands calculation)
+            for mol = (drawing ligand)
+            do (cando:do-atoms (atm mol)
+                 (chem:set-position atm (geom:v* (chem:get-position atm) scale)))))))
