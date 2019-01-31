@@ -1,0 +1,13 @@
+#! /bin/bash
+
+shift
+while [[ $1 != "--" ]]; do
+    shift
+done
+shift
+while [[ $1 != "--" ]]; do
+    shift
+done
+shift
+echo Command: $*
+eval $*
