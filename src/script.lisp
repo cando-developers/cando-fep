@@ -36,10 +36,10 @@
                                   :script *decharge-recharge-4-leap*
                                   :name "decharge-recharge"
                                   :extension "lisp"))
-           (decharge-pdb (make-instance 'morph-side-pdb-file :morph morph :side side :name "decharge"))
+           (decharge-mol2 (make-instance 'morph-side-mol2-file :morph morph :side side :name "decharge"))
            (decharge-topology (make-instance 'morph-side-topology-file :morph morph :side side :name "decharge"))
            (decharge-coordinates (make-instance 'morph-side-coordinate-file :morph morph :side side :name "decharge"))
-           (recharge-pdb (make-instance 'morph-side-pdb-file :morph morph :side side :name "recharge"))
+           (recharge-mol2 (make-instance 'morph-side-mol2-file :morph morph :side side :name "recharge"))
            (recharge-topology (make-instance 'morph-side-topology-file :morph morph :side side :name "recharge"))
            (recharge-coordinates (make-instance 'morph-side-coordinate-file :morph morph :side side :name "recharge")))
       (connect-graph
@@ -50,10 +50,10 @@
                                          :solvated solvated
                                          :source source
                                          :target target)
-                      :outputs (arguments :decharge-pdb decharge-pdb
+                      :outputs (arguments :decharge-mol2 decharge-mol2
                                           :decharge-topology decharge-topology
                                           :decharge-coordinates decharge-coordinates
-                                          :recharge-pdb recharge-pdb
+                                          :recharge-mol2 recharge-mol2
                                           :recharge-topology recharge-topology
                                           :recharge-coordinates recharge-coordinates) 
                       :script script
@@ -87,7 +87,7 @@
                                            :morph morph :side side
                                            :name side-name
                                            :extension "rst7")
-           for pdb-node = (make-instance 'morph-side-pdb-file
+           for mol2-node = (make-instance 'morph-side-mol2-file
                                          :morph morph :side side
                                          :name side-name)
            for script = (make-instance 'morph-side-script
@@ -104,7 +104,7 @@
                                                     :inputs (arguments :input input-feps-file)
                                                     :outputs (arguments :coordinates coord-node
                                                                         :topology input-topology-file
-                                                                        :pdb pdb-node)
+                                                                        :mol2 mol2-node)
                                                     :makefile-clause (standard-cando-makefile-clause script)))
            for morph-side-prepare-job = (make-morph-side-prepare morph side
                                                                  :input-topology-file input-topology-file
@@ -126,7 +126,8 @@
                                             (:recharge *recharge*))
                       for script = (unless (eq stage :vdw)
                                      (make-instance 'morph-side-stage-script-file :morph morph :side side :stage stage :script script-source
-                                                                                  :name (string-downcase stage)))
+                                                                                  :name (string-downcase stage)
+                                                                                  :extension "lisp"))
                       for inputs = (ecase stage
                                      (:decharge (arguments :feps input-feps-file
                                                            :solvated solvated
@@ -138,7 +139,7 @@
                       for outputs = (ecase stage
                                       (:decharge
                                        (arguments
-                                        :decharge-pdb (make-instance 'morph-side-stage-pdb-file
+                                        :decharge-mol2 (make-instance 'morph-side-stage-mol2-file
                                                                      :morph morph
                                                                      :side side
                                                                      :stage stage
@@ -156,7 +157,7 @@
                                       (:vdw-bonded nil)
                                       (:recharge
                                        (arguments
-                                        :recharge-pdb (make-instance 'morph-side-stage-pdb-file
+                                        :recharge-mol2 (make-instance 'morph-side-stage-mol2-file
                                                                      :morph morph
                                                                      :side side
                                                                      :stage stage

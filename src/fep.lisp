@@ -322,10 +322,10 @@
       (print-unreadable-object (obj stream)
         (format stream "~a ~a" (class-name (class-of obj)) (string (name obj))))))
 
-(defun pdb-safe-residue-name (calculation name)
+(defun mol2-safe-residue-name (calculation name)
   name)
 
-(defun pdb-safe-atom-name (calculation name)
+(defun mol2-safe-atom-name (calculation name)
   name)
 
 
@@ -577,7 +577,7 @@
                 (format t "chem:get-stereochemistry-type ~a -> ~a~%" moveable-atom (chem:get-stereochemistry-type moveable-atom))
                 (chem:set-configuration moveable-atom (cdr stereochemistry-assignment))
                 (format t "Set stereochemistry of ~a to ~a~%" moveable-atom (cdr stereochemistry-assignment))))
-            (format t "Anchored ~a to ~a restraints: ~a~%" moveable-atom pos (chem:all-restraints moveable-atom))))
+            (format t "Anchored ~a to ~a restraints: ~a props: ~s~%" moveable-atom pos (chem:all-restraints moveable-atom) (chem:properties moveable-atom))))
         fixed-pose-atoms moveable-atoms))
 
 (defun pose-ligands-using-pattern (calculation pattern docked-molecule &key stereochemical-restraints)
@@ -710,7 +710,10 @@ Otherwise return NIL."
         for am1-charges = (am1-charges fep)
         for bcc-corrections = (charges::calculate-bcc-corrections (fep::molecule fep))
         for am1-bcc-charges = (charges::combine-am1-bcc-charges (am1-charges fep) bcc-corrections)
-        do (setf (am1-bcc-charges fep) am1-bcc-charges)))
+        do (setf (am1-bcc-charges fep) am1-bcc-charges)
+           (maphash (lambda (atm charge)
+                      (chem:set-charge atm charge))
+                    am1-bcc-charges)))
 
 
 (defun complex (calculation ligand-name &optional (receptor-index 0))
@@ -842,7 +845,7 @@ METHOD controls how the masks are calculated"
 (defun load-chem-draw-fep (filename)
   (handler-bind ((warning #'muffle-warning))
     (with-open-file (fin (open filename :direction :input))
-      (chem:make-chem-draw fin :add-hydrogens nil))))
+      (chem:make-chem-draw fin nil nil))))
 
 
 (defun scale-molecule (mol)

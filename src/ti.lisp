@@ -48,7 +48,7 @@
                   (solvent-buffer *feps*)
                   (solvent-closeness *feps*))
                  (leap.add-ions:add-ions *system* :|Cl-| 0)
-                 (chem:save-pdb *system* (ensure-directories-exist "%pdb%"))
+                 (cando:save-mol2 *system* (ensure-directories-exist "%mol2%"))
                  (ensure-directories-exist #P"%topology%")
                  (ensure-directories-exist #P"%coordinates%")
                  (leap.topology:save-amber-parm-format *system* "%topology%" "%coordinates%")
@@ -150,43 +150,51 @@ outtraj %target% onlyframes 1
 ")
 
 (defparameter *decharge*
-  (format nil "~s"
-          `(progn ;# load the AMBER force fields
-            (load "source-dir;extensions;cando;src;lisp;start-cando.lisp")
-            (source "leaprc.ff14SB.redq")
-            (source "leaprc.gaff")
-            (load-amber-params "frcmod.ionsjc_tip3p")
-            (ql:quickload :fep)
-            (use-package :fep)
-            ;; load the fep-calculation
-            (fep:load-feps "%feps%")
-            (defparameter lsolv (load-pdb "%solvated%"))
-            (defparameter lsource (load-pdb "%source%"))
-            ;;decharge transformation
-            (defparameter decharge (combine (list lsource lsource lsolv)))
-            (set-box decharge :vdw)
-            (save-pdb decharge "%decharge-pdb%")
-            (save-amber-parm decharge "%decharge-topology%" "%decharge-coordinates%")
-            )))
+  (let ((*package* (find-package :keyword)))
+    (cl:format nil "~{~s~%~}"
+               `((load "source-dir:extensions;cando;src;lisp;start-cando.lisp")
+                 (ql:quickload :fep)
+                 (leap:setup-amber-paths)
+                 (leap:source "leaprc.ff14SB.redq")
+                 (leap:source "leaprc.gaff")
+                 (leap:load-amber-params "frcmod.ionsjc_tip3p")
+                 (ql:quickload :fep)
+                 ;; load the fep-calculation
+                 (fep:load-feps "%feps%")
+                 (defparameter lsolv (cando:load-mol2 "%solvated%"))
+                 (defparameter lsource (cando:load-mol2 "%source%"))
+                 ;;decharge transformation
+                 (defparameter decharge (cando:combine (chem:matter-copy lsource)
+                                                       (chem:matter-copy lsource)
+                                                       (chem:matter-copy lsolv)))
+                 (leap.set-box:set-box decharge :vdw)
+                 (cando:save-mol2 decharge "%decharge-mol2%")
+                 (leap.topology:save-amber-parm-format decharge "%decharge-topology%" "%decharge-coordinates%")
+                 (core:exit)
+                 ))))
 
 (defparameter *recharge*
-  (format nil "~s"
-          `(progn ;# load the AMBER force fields
-            (load "source-dir;extensions;cando;src;lisp;start-cando.lisp")
-            (source "leaprc.ff14SB.redq")
-            (source "leaprc.gaff")
-            (load-Amber-Params "frcmod.ionsjc_tip3p")
-            (ql:quickload :fep)
-            (use-package :fep)
-            ;; load the fep-calculation
-            (fep:load-feps "%feps%")
-            (defparameter lsolv (load-pdb "%solvated%"))
-            (defparameter ltarget (load-pdb "%target%"))
-            (defparameter recharge (combine (list ltarget ltarget lsolv)))
-            (set-box recharge :vdw)
-            (save-pdb recharge "%recharge-pdb%")
-            (save-amber-parm recharge "%recharge-topology%" "%recharge-coordinates%")
-            )))
+  (let ((*package* (find-package :keyword)))
+    (cl:format nil "~{~s~%~}"
+               `((load "source-dir:extensions;cando;src;lisp;start-cando.lisp")
+                 (ql:quickload :fep)
+                 (leap:setup-amber-paths)
+                 (leap:source "leaprc.ff14SB.redq")
+                 (leap:source "leaprc.gaff")
+                 (leap:load-Amber-Params "frcmod.ionsjc_tip3p")
+                 (ql:quickload :fep)
+                 ;; load the fep-calculation
+                 (fep:load-feps "%feps%")
+                 (defparameter lsolv (cando:load-mol2 "%solvated%"))
+                 (defparameter ltarget (cando:load-mol2 "%target%"))
+                 (defparameter recharge (cando:combine (chem:matter-copy ltarget)
+                                                       (chem:matter-copy ltarget)
+                                                       (chem:matter-copy lsolv)))
+                 (leap.set-box:set-box recharge :vdw)
+                 (cando:save-mol2 recharge "%recharge-mol2%")
+                 (leap.topology:save-amber-parm-format recharge "%recharge-topology%" "%recharge-coordinates%")
+                 (core:exit)
+                 ))))
 
 (defparameter *heat-in* 
   "heating
@@ -447,11 +455,11 @@ if __name__ == '__main__':
   ()
   (:documentation "Files with no specific purpose that depend on the morph/side"))
 
-(defclass morph-side-pdb-file (morph-side-file)
+(defclass morph-side-mol2-file (morph-side-file)
   ()
   (:default-initargs
-   :extension "pdb")
-  (:documentation "PDB files"))
+   :extension "mol2")
+  (:documentation "mol2 files"))
 
 (defclass morph-side-script (morph-side-file)
   ((script :initarg :script :accessor script))
@@ -491,10 +499,10 @@ if __name__ == '__main__':
    :extension "in")
   (:documentation "Files that depend on morph, side, stage"))
 
-(defclass morph-side-stage-pdb-file (morph-side-stage-file)
+(defclass morph-side-stage-mol2-file (morph-side-stage-file)
   ()
   (:default-initargs
-   :extension "pdb"))
+   :extension "mol2"))
 
 (defclass morph-side-stage-topology-file (morph-side-stage-file)
   ()
@@ -881,21 +889,21 @@ its for and then create a new class for it."))
                     :side side
                     :script script-file
                     :inputs (arguments :-i script-file :-p input-topology-file :coordinates input-coordinate-file)
-                    :outputs (arguments :solvated (make-instance 'morph-side-pdb-file
+                    :outputs (arguments :solvated (make-instance 'morph-side-mol2-file
                                                                  :morph morph
                                                                  :side side
                                                                  :name "solvated"
-                                                                 :extension "pdb")
-                                        :source (make-instance 'morph-side-pdb-file
+                                                                 :extension "mol2")
+                                        :source (make-instance 'morph-side-mol2-file
                                                                :morph morph
                                                                :side side
                                                                :name "source"
-                                                               :extension "pdb")
-                                        :target (make-instance 'morph-side-pdb-file
+                                                               :extension "mol2")
+                                        :target (make-instance 'morph-side-mol2-file
                                                                :morph morph
                                                                :side side
                                                                :name "target"
-                                                               :extension "pdb"))
+                                                               :extension "mol2"))
                     :makefile-clause (standard-makefile-clause "cpptraj %option-inputs% %option-outputs%")))))
 
 (defun make-heat-ti-step (morph side stage lam lambda-values &key input-coordinate-file input-topology-file)
