@@ -78,7 +78,9 @@
  &cntrl
    imin = 0, nstlim = 10000, irest = 0, ntx = 1, dt = 0.002,
    nmropt = 1,
-   ntt = 1, temp0 = 300.0, tempi = 5.0, tautp = 1.0,
+   ntt = 3, temp0 = 300.0, gamma_ln = 2.0, ig = -1,
+   tempi = 5.0, tautp = 1.0,
+   vlimit = 20,
    ntb = 1,
    ntc = 2, ntf = 1,
    ioutfm = 1, iwrap = 1,
@@ -110,7 +112,9 @@
   "pressurising
  &cntrl
    imin = 0, nstlim = 10000, irest = 1, ntx = 5, dt = 0.002,
-   ntt = 1, temp0 = 300.0, tautp = 1.0,
+   ntt = 3, temp0 = 300.0, gamma_ln = 2.0, ig = -1,
+   tautp = 1.0,
+   vlimit = 20,
    ntp = 1, pres0 = 1.0, taup = 2.0,
    ntb = 2,
    ntc = 2, ntf = 1,
@@ -200,7 +204,9 @@ outtraj %target% onlyframes 1
   "heating
  &cntrl
    imin = 0, nstlim = 10000, irest = 0, ntx = 1, dt = 0.002,
-   ntt = 1, temp0 = 300.0, tempi = 50.0, tautp = 1.0,
+   ntt = 3, temp0 = 300.0, gamma_ln = 2.0, ig = -1,
+   tempi = 50.0, tautp = 1.0,
+   vlimit = 20,
    ntc = 2, ntf = 1,
    ntb = 1,
    ioutfm = 1, iwrap = 1,
@@ -213,7 +219,7 @@ outtraj %target% onlyframes 1
    icfe = 1, clambda = %lambda%, scalpha = 0.5, scbeta = 12.0,
    logdvdl = 0,
    timask1 = '%timask1%', timask2 = '%timask2%',
-   ifsc = %ifsc%, crgmask = '%crgmask%'
+   ifsc = %ifsc%, scmask1='%scmask1%', scmask2='%scmask2%', crgmask = '%crgmask%'
  /
 
  &ewald
@@ -234,6 +240,7 @@ outtraj %target% onlyframes 1
  &cntrl
    imin = 0, nstlim = 100000, irest = 1, ntx = 5, dt = 0.002,
    ntt = 3, temp0 = 300.0, gamma_ln = 2.0, ig = -1,
+   vlimit = 20,
    ntc = 2, ntf = 1,
    ntb = 2,
    ntp = 1, pres0 = 1.0, taup = 2.0,
@@ -242,10 +249,10 @@ outtraj %target% onlyframes 1
 
    icfe = 1, clambda = %lambda%, scalpha = 0.5, scbeta = 12.0,
    logdvdl = 1,
-   ifmbar = 1, bar_intervall = 1000, mbar_states = 11,
+   ifmbar = 1, bar_intervall = 1000, mbar_states = %lambda-windows-count%,
    mbar_lambda = %lambda-windows%
    timask1 = '%timask1%', timask2 = '%timask2%',
-   ifsc = %ifsc%, crgmask = '%crgmask%'
+   ifsc = %ifsc%, scmask1='%scmask1%', scmask2='%scmask2%', crgmask = '%crgmask%'
  /
 
  &ewald
@@ -253,7 +260,7 @@ outtraj %target% onlyframes 1
 ")
 
 
-(defparameter *python-analyze*
+(defparameter *python-getdvdl*
   "import math
 from collections import OrderedDict
 
@@ -307,6 +314,7 @@ if __name__ == '__main__':
 
   skip = 5 # hard-coded - used to be passed on command line as int(sys.argv[1])
 #  glob_pattern = sys.argv[2] # don't use glob_pattern
+  output_filename = sys.argv[1]
   windows = sys.argv[2:]   # follows '--'
   extrap = 'polyfit' # or linear or polyfit
   stats = []
@@ -315,12 +323,12 @@ if __name__ == '__main__':
 
   for window in windows:
     cwd = os.getcwd()
-    os.chdir(window)
+#    os.chdir(os.path.dirname(os.path.realpath(window)))
 
     dVdl = OnlineAvVar()    
     ln = 0
 
-    for en in windows # used to be glob.glob(glob_pattern):
+    for en in windows: # used to be glob.glob(glob_pattern):
       with open(en, 'r') as en_file:
         for line in en_file:
           ln += 1
@@ -329,9 +337,11 @@ if __name__ == '__main__':
              dVdl.accumulate(float(line.split()[5]) )
 
     mean, std = dVdl.get_stat()
-    data[float(window)] = (mean, std / math.sqrt(dVdl.step), std)
+    window_dir = os.path.dirname(os.path.realpath(window))
+    window_name = window_dir[window_dir.rfind('/')+1:]
+    data[float(window_name)] = (mean, std / math.sqrt(dVdl.step), std)
 
-    os.chdir(cwd)
+#    os.chdir(cwd)
 
   x = data.keys()
   y = [d[0] for d in data.values()]
@@ -362,14 +372,17 @@ if __name__ == '__main__':
       x.append(1.0)
       y.append(sum(coeffs) )
 
+  fout = open(output_filename,'w')
   for a, b in zip(x, y):
     if a in data:
       v = data[a]
-      print a, v[0], v[1], v[2]
+      print >>fout, a, v[0], v[1], v[2]
     else:
-      print a, b
+      print >> fout, a, b
 
-  print '# dG =', np.trapz(y, x)
+  print >>fout, '# dG =', np.trapz(y, x)
+  fout.close()
+
 ")
 
 
@@ -411,6 +424,12 @@ if __name__ == '__main__':
   (:default-initargs
    :name "feps"
    :extension "cando"))
+
+(defclass python-script-file (node-file)
+  ((script :initarg :script :accessor script))
+  (:default-initargs
+   :name "getdvdl"
+   :extension "py"))
 
 (defclass cando-script-file (node-file)
   ((script :initarg :script :accessor script))
@@ -727,19 +746,21 @@ its for and then create a new class for it."))
          (call-next-method)))
 
 (defmethod substitutions (calculation job (node-file morph-side-stage-file))
-  (list* (cons "%STAGE-NAME%" (format nil "~s" (stage node-file)))
-         (call-next-method)))
+  (let* ((morph (morph node-file))
+         (morph-mask (calculate-masks morph (mask-method calculation))))
+    (append (list (cons "%STAGE-NAME%" (format nil "~s" (stage node-file))))
+            (crgmask-substitutions morph-mask (stage node-file))
+            (call-next-method))))
 
 #+(or)
 (defmethod substitutions (calculation (job t) (node-file morph-side-stage-lambda-file))
   (error "substitutions called with job ~s and node-file ~s" job node-file))
 
 (defmethod substitutions (calculation (job morph-side-stage-lambda-amber-job) (node-file morph-side-stage-lambda-file))
-  (list* (cons "%lambda%" (format nil "~f" (lambda% node-file)))
-         (cons "%lambda-windows%" (format nil "~{~f,~}" (lambda-values job)))
+  (append (list (cons "%lambda%" (format nil "~f" (lambda% node-file)))
+                (cons "%lambda-windows%" (format nil "~{~f,~}" (lambda-values job)))
+                (cons "%lambda-windows-count%" (format nil "~a" (length (lambda-values job)))))
          (call-next-method)))
-
-
 
 (defun output-file (amber-job option)
   (loop for output-arg in (outputs amber-job)
@@ -825,7 +846,8 @@ its for and then create a new class for it."))
                   :outputs (arguments :-o (make-instance 'sqm-output-file :name (name ligand)))
                   :makefile-clause (standard-makefile-clause "sqm %option-inputs% -O %option-outputs%"))))
 
-(defun make-morph-side-prepare-job (morph side &key name script input-coordinate-file input-topology-file)
+(defun make-morph-side-prepare-job (morph side &key executable name script input-coordinate-file input-topology-file)
+  (unless executable (error "You must provide an executable"))
   (unless input-coordinate-file (error "You must provide an input-coordinate-file"))
   (unless input-topology-file (error "You must provide an input-topology-file"))
   (let ((script-file (make-instance 'morph-side-script :morph morph :side side :name name :script script)))
@@ -856,25 +878,28 @@ its for and then create a new class for it."))
                                         :-l (make-instance 'morph-side-unknown-file
                                                            :morph morph :side side
                                                            :name name :extension "log")) ; (make-ti-file "-l" "%epl%/heat.log")))
-                    :makefile-clause (standard-makefile-clause "pmemd %option-inputs% -O %option-outputs%")))))
+                    :makefile-clause (standard-makefile-clause (format nil "~a %option-inputs% -O %option-outputs%" executable))))))
 
 (defun make-morph-side-prepare (morph side &rest args &key input-coordinate-file input-topology-file)
   (unless input-coordinate-file (error "You must provide an input-coordinate-file"))
   (unless input-topology-file (error "You must provide an input-topology-file"))
   (let* ((min-job (make-morph-side-prepare-job morph side
                                                :name "min"
+                                               :executable "pmemd"
                                                :script *prepare-min-in*
                                                :input-coordinate-file input-coordinate-file
                                                :input-topology-file input-topology-file))
          (min.rst (output-file min-job :-r))
          (heat-job (make-morph-side-prepare-job morph side
                                                 :name "heat"
+                                                :executable "pmemd.cuda"
                                                 :script *prepare-heat-in*
                                                 :input-coordinate-file min.rst
                                                 :input-topology-file input-topology-file))
          (heat.rst (output-file heat-job :-r))
          (press-job (make-morph-side-prepare-job morph side
                                                  :name "press"
+                                                 :executable "pmemd"
                                                  :script *prepare-press-in*
                                                  :input-coordinate-file heat.rst
                                                  :input-topology-file input-topology-file)))
@@ -926,7 +951,7 @@ its for and then create a new class for it."))
                                         )
                     :makefile-clause "%outputs% : %inputs%
 	runcmd -- %inputs% -- %outputs% -- \\
-	pmemd %option-inputs% \\
+	pmemd.cuda %option-inputs% \\
 	  -O %option-outputs%"))))
 
 (defun make-ti-step (morph side stage lam lambda-values &key input-coordinate-file input-topology-file)
@@ -948,7 +973,7 @@ its for and then create a new class for it."))
                                         )
                     :makefile-clause "%outputs% : %inputs%
 	runcmd -- %inputs% -- %outputs% -- \\
-	pmemd %option-inputs% \\
+	pmemd.cuda %option-inputs% \\
 	  -O %option-outputs%"))))
 
 (defclass ti-path ()
@@ -1002,34 +1027,42 @@ The fancy part is the inputs - inputs that have the form :-xxx are added as opti
 If there is one (and only one) input with the argument :. - that is appended to the option-inputs with the
 form '--' <list of file node pathnames>.  inputs and outputs with names like :yxxx where 'y' is NOT - or . are
 added to inputs and outputs but not option-inputs or option-outputs"
-  (let* (inputs option-inputs outputs option-outputs
-                (inputs-job (inputs job))
-                (dot-option-arg (find-if (lambda (arg) (eq :. (option arg))) inputs-job)) ; Find argument with :. option
-                (argument-inputs-job (remove-if (lambda (arg) (eq :. (option arg))) inputs-job)) ; Remove argument with :. option
-                )
+  (let* (inputs
+         option-inputs
+         outputs
+         option-outputs
+         (inputs-job (inputs job))
+         (dot-option-arg (find-if (lambda (arg) (eq :. (option arg))) inputs-job)) ; Find argument with :. option
+         (argument-inputs-job (remove-if (lambda (arg) (eq :. (option arg))) inputs-job)) ; Remove argument with :. option
+         extra-substitutions)
     (loop for input in argument-inputs-job
           for node-input = (node input)
           do (pushnew (namestring (node-pathname node-input)) inputs :test #'string=)
-             (when (char= (char (string (option input)) 0) #\-)
-               (push (string-downcase (option input)) option-inputs)
-               (push (namestring (node-pathname (node input))) option-inputs)))
+             (if (char= (char (string (option input)) 0) #\-)
+                 (progn
+                   (push (string-downcase (option input)) option-inputs)
+                   (push (namestring (node-pathname (node input))) option-inputs))
+                 (push (cons (format nil "%~a%" (string-downcase (option input))) (namestring (node-pathname (node input)))) extra-substitutions)))
     (when dot-option-arg
       (mapc (lambda (one) (pushnew (namestring (node-pathname one)) inputs :test #'string=)) (node dot-option-arg))
       (push "--" option-inputs)
       (mapc (lambda (one) (pushnew (namestring (node-pathname one)) option-inputs :test #'string=)) (node dot-option-arg)))
     (loop for output in (outputs job)
           do (pushnew (namestring (node-pathname (node output))) outputs :test #'string=)
-             (when (char= (char (string (option output)) 0) #\-)
-               (push (string-downcase (option output)) option-outputs)
-               (push (namestring (node-pathname (node output))) option-outputs)))
-    (list* (cons "%inputs%" (format nil "~{~a ~}" (reverse inputs)))
-           (cons "%outputs%" (format nil "~{~a ~}" (reverse outputs)))
-           (cons "%option-inputs%" (format nil "~{~a ~}" (reverse option-inputs)))
-           (cons "%option-outputs%" (format nil "~{~a ~}" (reverse option-outputs)))
-           (if script-code
-               (list (cons "%script-code%" (format nil "~a" script-code)))
-               nil))))
-    
+             (if (char= (char (string (option output)) 0) #\-)
+                 (progn
+                   (push (string-downcase (option output)) option-outputs)
+                   (push (namestring (node-pathname (node output))) option-outputs))
+                 (push (cons (format nil "%~a%" (string-downcase (option output))) (namestring (node-pathname (node output)))) extra-substitutions)))
+    (append
+     (list* (cons "%inputs%" (format nil "~{~a ~}" (reverse inputs)))
+            (cons "%outputs%" (format nil "~{~a ~}" (reverse outputs)))
+            (cons "%option-inputs%" (format nil "~{~a ~}" (reverse option-inputs)))
+            (cons "%option-outputs%" (format nil "~{~a ~}" (reverse option-outputs)))
+            (if script-code
+                (list (cons "%script-code%" (format nil "~a" script-code)))
+                nil))
+     extra-substitutions)))
 
 (defmethod generate-code (calculation (job base-job) makefile visited-nodes)
   ;; Generate script

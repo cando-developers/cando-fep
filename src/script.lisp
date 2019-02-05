@@ -217,23 +217,22 @@
                                                                        :input-topology-file input-topology-file
                                                                        :input-coordinate-file input-coordinate-file)
                                                          recharge-jobs)))))
-                           (let ((script (make-instance 'morph-side-stage-script-file
-                                                        :morph morph :side side :stage stage
-                                                        :script *python-analyze*
-                                                        :name "analyze"
+                           (let ((script (make-instance 'python-script-file
+                                                        :script *python-getdvdl*
+                                                        :name "getdvdl"
                                                         :extension "py")))
                              (push (connect-graph
                                     (make-instance 'morph-side-stage-python-job
                                                    :morph morph :side side :stage stage :script script
                                                    :inputs (case stage
-                                                             (:decharge (arguments :. (mapcar (lambda (job) (output-file job :-e)) decharge-jobs)))
-                                                             (:vdw-bonded (arguments :. (mapcar (lambda (job) (output-file job :-e)) vdw-jobs)))
-                                                             (:recharge (arguments :. (mapcar (lambda (job) (output-file job :-e)) recharge-jobs))))
+                                                              (:decharge (arguments :. (mapcar (lambda (job) (output-file job :-e)) decharge-jobs)))
+                                                              (:vdw-bonded (arguments :. (mapcar (lambda (job) (output-file job :-e)) vdw-jobs)))
+                                                              (:recharge (arguments :. (mapcar (lambda (job) (output-file job :-e)) recharge-jobs))))
                                                    :outputs (arguments :stage-analysis (make-instance 'morph-side-stage-file
                                                                                                       :morph morph :side side :stage stage
                                                                                                       :name "dvdl" :extension "dat"))
-                                                   :makefile-clause (standard-makefile-clause "analyze.py -- %inputs%")))
-                                   stage-jobs))))
+                                                   :makefile-clause (standard-makefile-clause "python2 getdvdl.py %stage-analysis% %inputs%")))
+                                    stage-jobs))))
                 ;; combine stage-jobs
                 (let ((side-script (make-instance 'morph-side-script
                                                   :morph morph :side side

@@ -804,21 +804,26 @@ METHOD controls how the masks are calculated"
 (defun mask-substitutions (mask &optional stage)
   (unless (typep stage '(member nil :vdw-bonded :decharge :recharge))
     (error "stage ~s must be one of nil :vdw-bonded :decharge :recharge" stage))
-  (list* (cons "%timask1%" (source-timask mask))
-         (cons "%scmask1%" (source-scmask mask))
-         (cons "%timask2%" (target-timask mask))
-         (cons "%scmask2%" (target-scmask mask))
-         (cond
-           ((eq stage :decharge)
-            (list (cons "%crgmask%" (target-scmask mask))
-                  (cons "%ifsc%" "0")))
-           ((eq stage :vdw-bonded)
-            (list (cons "%crgmask%" (format nil "~a|~a" (source-scmask mask) (target-scmask mask))) 
-                  (cons "%ifsc%" "1")))
-           ((eq stage :recharge)
-            (list (cons "%crgmask%" (source-scmask mask))
-                  (cons "%ifsc%" "0")))
-           (t nil))))
+  (list
+   (cons "%timask1%" (source-timask mask))
+   (cons "%scmask1%" (source-scmask mask))
+   (cons "%timask2%" (target-timask mask))
+   (cons "%scmask2%" (target-scmask mask))))
+
+(defun crgmask-substitutions (mask stage)
+  (unless (typep stage '(member nil :vdw-bonded :decharge :recharge))
+    (error "stage ~s must be one of nil :vdw-bonded :decharge :recharge" stage))
+  (cond
+    ((eq stage :decharge)
+     (list (cons "%crgmask%" (target-scmask mask))
+           (cons "%ifsc%" "0")))
+    ((eq stage :vdw-bonded)
+     (list (cons "%crgmask%" (format nil "~a|~a" (source-scmask mask) (target-scmask mask))) 
+           (cons "%ifsc%" "1")))
+    ((eq stage :recharge)
+     (list (cons "%crgmask%" (source-scmask mask))
+           (cons "%ifsc%" "0")))
+    (t nil)))
 
 
 
