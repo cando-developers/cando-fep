@@ -200,7 +200,42 @@ outtraj %target% onlyframes 1
                  (core:exit)
                  ))))
 
-(defparameter *heat-in* 
+(defparameter *decharge-recharge-heat-in* 
+  "heating
+ &cntrl
+   imin = 0, nstlim = 10000, irest = 0, ntx = 1, dt = 0.002,
+   ntt = 3, temp0 = 300.0, gamma_ln = 2.0, ig = -1,
+   tempi = 50.0, tautp = 1.0,
+   vlimit = 20,
+   ntc = 2, ntf = 1,
+   ntb = 1,
+   ioutfm = 1, iwrap = 1,
+   ntwe = 1000, ntwx = 1000, ntpr = 1000, ntwr = 5000,
+
+   nmropt = 1,
+   ntr = 1, restraint_wt = 5.00,
+   restraintmask='!:WAT & !@H=',
+
+   icfe = 1, clambda = %lambda%, scalpha = 0.5, scbeta = 12.0,
+   logdvdl = 0,
+   timask1 = '%timask1%', timask2 = '%timask2%',
+   ifsc = %ifsc%, crgmask = '%crgmask%'
+ /
+
+ &ewald
+ / 
+
+ &wt
+   type='TEMP0',
+   istep1 = 0, istep2 = 8000,                                      
+   value1 = 50.0, value2 = 300.0
+ /
+
+ &wt type = 'END'
+ /
+")
+
+(defparameter *vdw-heat-in* 
   "heating
  &cntrl
    imin = 0, nstlim = 10000, irest = 0, ntx = 1, dt = 0.002,
@@ -899,7 +934,7 @@ its for and then create a new class for it."))
          (heat.rst (output-file heat-job :-r))
          (press-job (make-morph-side-prepare-job morph side
                                                  :name "press"
-                                                 :executable "pmemd"
+                                                 :executable "pmemd.cuda"
                                                  :script *prepare-press-in*
                                                  :input-coordinate-file heat.rst
                                                  :input-topology-file input-topology-file)))
@@ -932,7 +967,16 @@ its for and then create a new class for it."))
                     :makefile-clause (standard-makefile-clause "cpptraj %option-inputs% %option-outputs%")))))
 
 (defun make-heat-ti-step (morph side stage lam lambda-values &key input-coordinate-file input-topology-file)
-  (let ((script (make-instance 'morph-side-stage-lambda-amber-script :morph morph :side side :stage stage :lambda% lam :name "heat" :script *heat-in*))) ; "%epl%/heat.in"
+  (let ((script (make-instance 'morph-side-stage-lambda-amber-script
+                               :morph morph
+                               :side side
+                               :stage stage
+                               :lambda% lam
+                               :name "heat"
+                               :script (cond
+                                         ((member stage '(:decharge :recharge))
+                                          *decharge-recharge-heat-in*)
+                                         (t *vdw-heat-in*))))) ; "%epl%/heat.in"
     (connect-graph
      (make-instance 'morph-side-stage-lambda-amber-job
                     :lambda% lam
