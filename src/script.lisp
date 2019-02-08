@@ -242,14 +242,15 @@
                   (push (connect-graph
                          (make-instance 'morph-side-cando-job
                                         :morph morph :side side
+                                        :script side-script
                                         :inputs (arguments :. (mapcar (lambda (job) (output-file job :stage-analysis)) stage-jobs))
                                         :outputs (arguments :side-analysis (make-instance 'morph-side-file
                                                                                           :morph morph :side side
                                                                                           :name "side-analysis" :extension "dat"))
-                                        :makefile-clause (standard-cando-makefile-clause side-script)))
+                                        :makefile-clause (standard-cando-makefile-clause side-script :add-inputs t)))
                         analysis-jobs))))
          ;; combine analysis-jobs
-         (let ((script (make-instance 'morph-script
+         (let ((morph-script (make-instance 'morph-script
                                       :morph morph
                                       :script *combine-sides*
                                       :name "morph-script"
@@ -257,11 +258,12 @@
            (push (connect-graph
                   (make-instance 'morph-cando-job
                                  :morph morph
+                                 :script morph-script
                                  :inputs (arguments :. (mapcar (lambda (job) (output-file job :side-analysis)) analysis-jobs))
                                  :outputs (arguments :morph-analysis (make-instance 'morph-file
                                                                                     :morph morph
                                                                                     :name "morph-analysis" :extension "dat"))
-                                 :makefile-clause (standard-cando-makefile-clause script)))
+                                 :makefile-clause (standard-cando-makefile-clause morph-script :add-inputs t)))
                  morph-jobs))))
       morph-jobs)))
 

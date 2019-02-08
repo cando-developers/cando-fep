@@ -270,7 +270,32 @@ outtraj %target% onlyframes 1
  /
 ")
 
-(defparameter *ti-in*
+(defparameter *decharge-recharge-ti-in*
+  "TI simulation
+ &cntrl
+   imin = 0, nstlim = 100000, irest = 1, ntx = 5, dt = 0.002,
+   ntt = 3, temp0 = 300.0, gamma_ln = 2.0, ig = -1,
+   vlimit = 20,
+   ntc = 2, ntf = 1,
+   ntb = 2,
+   ntp = 1, pres0 = 1.0, taup = 2.0,
+   ioutfm = 1, iwrap = 1,
+   ntwe = 1000, ntwx = 10000, ntpr = 10000, ntwr = 20000,
+
+   icfe = 1, clambda = %lambda%, scalpha = 0.5, scbeta = 12.0,
+   logdvdl = 1,
+   ifmbar = 1, bar_intervall = 1000, mbar_states = %lambda-windows-count%,
+   mbar_lambda = %lambda-windows%
+   timask1 = '%timask1%', timask2 = '%timask2%',
+   ifsc = %ifsc%, crgmask = '%crgmask%'
+ /
+
+ &ewald
+ / 
+")
+
+
+(defparameter *vdw-ti-in*
   "TI simulation
  &cntrl
    imin = 0, nstlim = 100000, irest = 1, ntx = 5, dt = 0.002,
@@ -408,24 +433,29 @@ if __name__ == '__main__':
       y.append(sum(coeffs) )
 
   fout = open(output_filename,'w')
+  print >>fout, '(( :lambdas ('
   for a, b in zip(x, y):
     if a in data:
       v = data[a]
-      print >>fout, a, v[0], v[1], v[2]
+      print >>fout, '( ', a, v[0], v[1], v[2], ') '
     else:
-      print >> fout, a, b
-
-  print >>fout, '# dG =', np.trapz(y, x)
+      print >> fout, ';;; ', a, b
+  print >>fout, '))'
+  print >>fout, '( :dg . ', np.trapz(y, x), '))'
   fout.close()
 
 ")
 
 
 (defparameter *combine-stages*
-  "(error \"Combine the stages for files ~s~%\" %inputs%)")
+  "(warn \"Combine the stages for files ~s~%\" %.parts%)
+(core:exit 0)
+")
 
 (defparameter *combine-sides*
-  "(error \"Combine the sides for files ~s~%\" %inputs%)")
+  "(warn \"Combine the sides for files ~s~%\" %.parts%)
+(core:exit 0)
+")
 
 
 (defclass ti-calculation ()
@@ -621,6 +651,12 @@ its for and then create a new class for it."))
                                               :relative
                                               "am1bcc"))))
 
+(defmethod node-pathname ((node morph-file))
+  (merge-pathnames (make-pathname :name (string-downcase (name node)) :type (extension node))
+                   (make-pathname :directory (list
+                                              :relative
+                                              (string (morph-string (morph node)))))))
+
 (defmethod node-pathname ((node morph-side-file))
   (merge-pathnames (make-pathname :name (string-downcase (name node)) :type (extension node))
                    (make-pathname :directory (list
@@ -751,7 +787,10 @@ its for and then create a new class for it."))
     (loop for input in (inputs job)
           for option = (option input)
           for file = (node input)
-          unless (eq option :.)
+          if (eq option :.)
+            do (push (cons "%.parts%" (format nil "(list ~{\"~a\" ~})" (reverse (mapcar (lambda (x) (namestring (node-pathname x))) file))))
+                     substitutions)
+          else
             do (push (cons (format nil "%~a%" (string-downcase option))
                            (namestring (node-pathname file)))
                      substitutions))
@@ -870,8 +909,10 @@ its for and then create a new class for it."))
 	runcmd -- %inputs% -- %outputs% -- \\
 	~a~%" command))
 
-(defun standard-cando-makefile-clause (script)
-  (standard-makefile-clause (format nil "iclasp-boehm -l ~a" (node-pathname script))))
+(defun standard-cando-makefile-clause (script &key add-inputs)
+  (if add-inputs
+      (standard-makefile-clause (format nil "iclasp-boehm -l ~a -- %inputs%" (node-pathname script)))
+      (standard-makefile-clause (format nil "iclasp-boehm -l ~a" (node-pathname script)))))
 
 (defun make-ligand-sqm-step (ligand &key sqm-input-file)
   (connect-graph
@@ -974,9 +1015,15 @@ its for and then create a new class for it."))
                                :lambda% lam
                                :name "heat"
                                :script (cond
-                                         ((member stage '(:decharge :recharge))
+                                         ((eq stage :decharge)
                                           *decharge-recharge-heat-in*)
-                                         (t *vdw-heat-in*))))) ; "%epl%/heat.in"
+                                         ((eq stage :recharge)
+                                          *decharge-recharge-heat-in*)
+                                         ((eq stage :vdw-bonded)
+                                          *vdw-heat-in*)
+                                         ((null stage)
+                                          *vdw-heat-in*)
+                                         (t (error "Illegal stage ~a for make-heat-ti-step script - what do I do with this?" stage))))))
     (connect-graph
      (make-instance 'morph-side-stage-lambda-amber-job
                     :lambda% lam
@@ -999,7 +1046,22 @@ its for and then create a new class for it."))
 	  -O %option-outputs%"))))
 
 (defun make-ti-step (morph side stage lam lambda-values &key input-coordinate-file input-topology-file)
-  (let ((script (make-instance 'morph-side-stage-lambda-amber-script :morph morph :side side :stage stage :lambda% lam :name "ti" :script *ti-in*)))
+  (let ((script (make-instance 'morph-side-stage-lambda-amber-script
+                               :morph morph
+                               :side side
+                               :stage stage
+                               :lambda% lam
+                               :name "ti"
+                               :script (cond
+                                         ((eq stage :decharge)
+                                          *decharge-recharge-ti-in*)
+                                         ((eq stage :recharge)
+                                          *decharge-recharge-ti-in*)
+                                         ((eq stage :vdw-bonded)
+                                          *vdw-ti-in*)
+                                         ((null stage)
+                                          *vdw-ti-in*)
+                                         (t (error "Illegal stage ~a for make-ti-step script - what do I do with this?" stage))))))
     (connect-graph
      (make-instance 'morph-side-stage-lambda-amber-job
                     :lambda% lam
@@ -1108,6 +1170,20 @@ added to inputs and outputs but not option-inputs or option-outputs"
                 nil))
      extra-substitutions)))
 
+(defun write-script-if-it-has-changed (script-file script-code)
+  (let ((script-pathname (node-pathname script-file)))
+    (when (probe-file script-pathname)
+      (let ((existing-script-code (with-open-file (fin script-pathname :direction :input)
+                                    (let ((data (make-string (file-length fin))))
+                                      (read-sequence data fin)
+                                      data))))
+        (when (string= script-code existing-script-code)
+          (format t "Skipping generation of ~a - it has not changed~%" script-pathname)
+          (return-from write-script-if-it-has-changed nil))))
+    (format t "Generating script ~a~%" script-pathname)
+    (with-open-file (fout script-pathname :direction :output :if-exists :supersede)
+      (write-string script-code fout))))
+
 (defmethod generate-code (calculation (job base-job) makefile visited-nodes)
   ;; Generate script
   (let ((script (script job))
@@ -1116,8 +1192,7 @@ added to inputs and outputs but not option-inputs or option-outputs"
       (let* ((raw-script (script script))
              (substituted-script (replace-all (substitutions calculation job script) raw-script)))
         (setf script-code substituted-script)
-        (with-open-file (fout (node-pathname script) :direction :output :if-exists :supersede)
-          (write-string substituted-script fout))))
+        (write-script-if-it-has-changed script substituted-script)))
     (let ((raw-makefile-clause (makefile-clause job)))
       (when raw-makefile-clause
         (let* ((makefile-substitutions (makefile-substitutions calculation job script-code))
@@ -1130,8 +1205,6 @@ added to inputs and outputs but not option-inputs or option-outputs"
                    unless (gethash child visited-nodes)
                      do (setf (gethash child visited-nodes) t)
                         (generate-code calculation child makefile visited-nodes)))))
-
-
 
 (defun generate-all-code (calculation work-list final-outputs)
   (with-top-directory (calculation)
