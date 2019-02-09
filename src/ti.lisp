@@ -906,7 +906,7 @@ its for and then create a new class for it."))
 
 (defun standard-makefile-clause (command)
   (format nil "%outputs% : %inputs%
-	runcmd -- %inputs% -- %outputs% -- \\
+	runcmd -- %dependency-inputs% -- %dependency-outputs% -- \\
 	~a~%" command))
 
 (defun standard-cando-makefile-clause (script &key add-inputs)
@@ -1041,7 +1041,7 @@ its for and then create a new class for it."))
                                         :-l (make-instance 'morph-side-stage-lambda-unknown-file :morph morph :side side :stage stage :lambda% lam :name "heat" :extension "log") ; (make-ti-file "-l" "%epl%/heat.log"))
                                         )
                     :makefile-clause "%outputs% : %inputs%
-	runcmd -- %inputs% -- %outputs% -- \\
+	runcmd -- %dependency-inputs% -- %dependency-outputs% -- \\
 	pmemd.cuda %option-inputs% \\
 	  -O %option-outputs%"))))
 
@@ -1078,7 +1078,7 @@ its for and then create a new class for it."))
                                         :-l (make-instance 'morph-side-stage-lambda-unknown-file :morph morph :side side :stage stage :lambda% lam :name "ti001" :extension "log") ; (make-ti-file "-l" "%epl%/ti001.log"))
                                         )
                     :makefile-clause "%outputs% : %inputs%
-	runcmd -- %inputs% -- %outputs% -- \\
+	runcmd -- %dependency-inputs% -- %dependency-outputs% -- \\
 	pmemd.cuda %option-inputs% \\
 	  -O %option-outputs%"))))
 
@@ -1133,7 +1133,8 @@ The fancy part is the inputs - inputs that have the form :-xxx are added as opti
 If there is one (and only one) input with the argument :. - that is appended to the option-inputs with the
 form '--' <list of file node pathnames>.  inputs and outputs with names like :yxxx where 'y' is NOT - or . are
 added to inputs and outputs but not option-inputs or option-outputs"
-  (let* (inputs
+  (let* (dependency-inputs
+         inputs
          option-inputs
          outputs
          option-outputs
@@ -1141,6 +1142,10 @@ added to inputs and outputs but not option-inputs or option-outputs"
          (dot-option-arg (find-if (lambda (arg) (eq :. (option arg))) inputs-job)) ; Find argument with :. option
          (argument-inputs-job (remove-if (lambda (arg) (eq :. (option arg))) inputs-job)) ; Remove argument with :. option
          extra-substitutions)
+    ;; Add the script as an input
+    (when (script job)
+      (push (namestring (node-pathname (script job))) dependency-inputs))
+    ;; Add all inputs
     (loop for input in argument-inputs-job
           for node-input = (node input)
           do (pushnew (namestring (node-pathname node-input)) inputs :test #'string=)
@@ -1161,7 +1166,9 @@ added to inputs and outputs but not option-inputs or option-outputs"
                    (push (namestring (node-pathname (node output))) option-outputs))
                  (push (cons (format nil "%~a%" (string-downcase (option output))) (namestring (node-pathname (node output)))) extra-substitutions)))
     (append
-     (list* (cons "%inputs%" (format nil "~{~a ~}" (reverse inputs)))
+     (list* (cons "%dependency-inputs%" (format nil "~{~a ~}" (append dependency-inputs (reverse inputs))))
+            (cons "%inputs%" (format nil "~{~a ~}" (reverse inputs)))
+            (cons "%dependency-outputs%" (format nil "~{~a ~}" (reverse outputs)))
             (cons "%outputs%" (format nil "~{~a ~}" (reverse outputs)))
             (cons "%option-inputs%" (format nil "~{~a ~}" (reverse option-inputs)))
             (cons "%option-outputs%" (format nil "~{~a ~}" (reverse option-outputs)))
@@ -1170,19 +1177,18 @@ added to inputs and outputs but not option-inputs or option-outputs"
                 nil))
      extra-substitutions)))
 
-(defun write-script-if-it-has-changed (script-file script-code)
-  (let ((script-pathname (node-pathname script-file)))
-    (when (probe-file script-pathname)
-      (let ((existing-script-code (with-open-file (fin script-pathname :direction :input)
+(defun write-file-if-it-has-changed (pathname code)
+    (when (probe-file pathname)
+      (let ((existing-code (with-open-file (fin pathname :direction :input)
                                     (let ((data (make-string (file-length fin))))
                                       (read-sequence data fin)
                                       data))))
-        (when (string= script-code existing-script-code)
-          (format t "Skipping generation of ~a - it has not changed~%" script-pathname)
-          (return-from write-script-if-it-has-changed nil))))
-    (format t "Generating script ~a~%" script-pathname)
-    (with-open-file (fout script-pathname :direction :output :if-exists :supersede)
-      (write-string script-code fout))))
+        (when (string= code existing-code)
+          (format t "Skipping generation of ~a - it has not changed~%" pathname)
+          (return-from write-file-if-it-has-changed nil))))
+    (format t "Generating script ~a~%" pathname)
+    (with-open-file (fout (ensure-directories-exist pathname) :direction :output :if-exists :supersede)
+      (write-string code fout)))
 
 (defmethod generate-code (calculation (job base-job) makefile visited-nodes)
   ;; Generate script
@@ -1192,7 +1198,7 @@ added to inputs and outputs but not option-inputs or option-outputs"
       (let* ((raw-script (script script))
              (substituted-script (replace-all (substitutions calculation job script) raw-script)))
         (setf script-code substituted-script)
-        (write-script-if-it-has-changed script substituted-script)))
+        (write-file-if-it-has-changed (node-pathname script) substituted-script)))
     (let ((raw-makefile-clause (makefile-clause job)))
       (when raw-makefile-clause
         (let* ((makefile-substitutions (makefile-substitutions calculation job script-code))
@@ -1214,12 +1220,14 @@ added to inputs and outputs but not option-inputs or option-outputs"
       (let ((body (with-output-to-string (makefile)
                     (loop for job in work-list
                           do (generate-code calculation job  makefile visited-nodes)))))
-        (with-open-file (makefile makefile-pathname :direction :output :if-exists :supersede)
-          (format makefile "all : ~{~a ~}~%" (mapcar (lambda (file) (node-pathname file)) final-outputs))
-          (format makefile "~aecho DONE~%" #\tab)
-          (format makefile "~%")
-          (write-string body makefile)
-          (terpri makefile))))))
+        (write-file-if-it-has-changed
+         makefile-pathname
+         (with-output-to-string (makefile)
+           (format makefile "all : ~{~a ~}~%" (mapcar (lambda (file) (node-pathname file)) final-outputs))
+           (format makefile "~aecho DONE~%" #\tab)
+           (format makefile "~%")
+           (write-string body makefile)
+           (terpri makefile)))))))
 
 #|
 (defparameter *morphs*

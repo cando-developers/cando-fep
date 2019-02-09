@@ -657,8 +657,12 @@ Otherwise return NIL."
              (result (loop for ligand in ligands
                            for in-file = (make-instance 'sqm-input-file :name (name ligand))
                            for order-file = (make-instance 'sqm-atom-order-file :name (name ligand))
-                           for atom-order = (with-open-file (fout (ensure-directories-exist (node-pathname in-file)) :direction :output :if-exists :supersede)
-                                              (charges:write-sqm-calculation fout (molecule ligand) :maxcyc maxcyc))
+                           for atom-order = (let (atom-order)
+                                              (write-file-if-it-has-changed
+                                               (node-pathname in-file)
+                                               (with-output-to-string (sout) 
+                                                 (setf atom-order (charges:write-sqm-calculation sout (molecule ligand) :maxcyc maxcyc))))
+                                              atom-order)
                            for job = (make-ligand-sqm-step ligand :sqm-input-file in-file)
                            do (setf (atom-order ligand) atom-order)
                            do (push (make-instance 'argument :option :output :node in-file) outputs)
