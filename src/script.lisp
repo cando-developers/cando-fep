@@ -20,46 +20,6 @@
       (print-unreadable-object (obj stream)
         (format stream "fep-calculation"))))
 
-#+(or)
-(defun maybe-decharge-recharge-job (&key morph side press-job input-topology-file)
-  (when (decharge-recharge morph)
-    (let* ((press (output-file last-job :-r))
-           (strip-job (make-morph-side-strip morph side
-                                             :input-topology-file input-topology-file
-                                             :input-coordinate-file press))
-           (solvated (output-file strip-job :solvated))
-           (source (output-file strip-job :source))
-           (target (output-file strip-job :target))
-           (script (make-instance 'morph-side-script
-                                  :morph morph
-                                  :side side
-                                  :script *decharge-recharge-4-leap*
-                                  :name "decharge-recharge"
-                                  :extension "lisp"))
-           (decharge-mol2 (make-instance 'morph-side-mol2-file :morph morph :side side :name "decharge"))
-           (decharge-topology (make-instance 'morph-side-topology-file :morph morph :side side :name "decharge"))
-           (decharge-coordinates (make-instance 'morph-side-coordinate-file :morph morph :side side :name "decharge"))
-           (recharge-mol2 (make-instance 'morph-side-mol2-file :morph morph :side side :name "recharge"))
-           (recharge-topology (make-instance 'morph-side-topology-file :morph morph :side side :name "recharge"))
-           (recharge-coordinates (make-instance 'morph-side-coordinate-file :morph morph :side side :name "recharge")))
-      (connect-graph
-       (make-instance 'morph-side-cando-job
-                      :morph morph
-                      :side side
-                      :inputs (arguments :feps input-feps-file
-                                         :solvated solvated
-                                         :source source
-                                         :target target)
-                      :outputs (arguments :decharge-mol2 decharge-mol2
-                                          :decharge-topology decharge-topology
-                                          :decharge-coordinates decharge-coordinates
-                                          :recharge-mol2 recharge-mol2
-                                          :recharge-topology recharge-topology
-                                          :recharge-coordinates recharge-coordinates) 
-                      :script script
-                      :makefile-clause (standard-cando-makefile-clause script))))))
-
-
 (defmacro powerloop ((&rest clauses) &rest final)
   (if (null clauses)
       `(progn ,@final)
@@ -101,10 +61,10 @@
                                                     :morph morph
                                                     :side side
                                                     :script script
-                                                    :inputs (arguments :input input-feps-file)
-                                                    :outputs (arguments :coordinates coord-node
-                                                                        :topology input-topology-file
-                                                                        :mol2 mol2-node)
+                                                    :inputs (arguments :%INPUT% input-feps-file)
+                                                    :outputs (arguments :%COORDINATES% coord-node
+                                                                        :%TOPOLOGY% input-topology-file
+                                                                        :%MOL2% mol2-node)
                                                     :makefile-clause (standard-cando-makefile-clause script)))
            for morph-side-prepare-job = (make-morph-side-prepare morph side
                                                                  :input-topology-file input-topology-file
@@ -117,9 +77,9 @@
                                      (1 '(:vdw-bonded))
                                      (3 '(:decharge :vdw-bonded :recharge))
                                      (otherwise (error "Illegal number of stages ~a - only 1 or 3 are allowed for morph ~s" (stages morph) morph)))
-                      with source = (output-file strip-job :source)
-                      with target = (output-file strip-job :target)
-                      with solvated = (output-file strip-job :solvated)
+                      with source = (output-file strip-job :%SOURCE%)
+                      with target = (output-file strip-job :%TARGET%)
+                      with solvated = (output-file strip-job :%SOLVATED%)
                       for script-source = (ecase stage
                                             (:decharge *decharge*)
                                             (:vdw-bonded nil)
@@ -129,27 +89,27 @@
                                                                                   :name (string-downcase stage)
                                                                                   :extension "lisp"))
                       for inputs = (ecase stage
-                                     (:decharge (arguments :feps input-feps-file
-                                                           :solvated solvated
-                                                           :source source))
+                                     (:decharge (arguments :%FEPS% input-feps-file
+                                                           :%SOLVATED% solvated
+                                                           :%SOURCE% source))
                                      (:vdw-bonded nil)
-                                     (:recharge (arguments :feps input-feps-file
-                                                           :solvated solvated
-                                                           :target target)))
+                                     (:recharge (arguments :%FEPS% input-feps-file
+                                                           :%SOLVATED% solvated
+                                                           :%TARGET% target)))
                       for outputs = (ecase stage
                                       (:decharge
                                        (arguments
-                                        :decharge-mol2 (make-instance 'morph-side-stage-mol2-file
+                                        :%DECHARGE-MOL2% (make-instance 'morph-side-stage-mol2-file
                                                                      :morph morph
                                                                      :side side
                                                                      :stage stage
                                                                      :name "decharge")
-                                        :decharge-topology (make-instance 'morph-side-stage-topology-file
+                                        :%DECHARGE-TOPOLOGY% (make-instance 'morph-side-stage-topology-file
                                                                           :morph morph
                                                                           :side side
                                                                           :stage stage
                                                                           :name "decharge")
-                                        :decharge-coordinates (make-instance 'morph-side-stage-coordinates-file
+                                        :%DECHARGE-COORDINATES% (make-instance 'morph-side-stage-coordinates-file
                                                                              :morph morph
                                                                              :side side
                                                                              :stage stage
@@ -157,17 +117,17 @@
                                       (:vdw-bonded nil)
                                       (:recharge
                                        (arguments
-                                        :recharge-mol2 (make-instance 'morph-side-stage-mol2-file
+                                        :%RECHARGE-MOL2% (make-instance 'morph-side-stage-mol2-file
                                                                      :morph morph
                                                                      :side side
                                                                      :stage stage
                                                                      :name "recharge")
-                                        :recharge-topology (make-instance 'morph-side-stage-topology-file
+                                        :%RECHARGE-TOPOLOGY% (make-instance 'morph-side-stage-topology-file
                                                                           :morph morph
                                                                           :side side
                                                                           :stage stage
                                                                           :name "recharge")
-                                        :recharge-coordinates (make-instance 'morph-side-stage-coordinates-file
+                                        :%RECHARGE-COORDINATES% (make-instance 'morph-side-stage-coordinates-file
                                                                              :morph morph
                                                                              :side side
                                                                              :stage stage
@@ -187,8 +147,8 @@
                            (loop for lambda-value in lambda-values
                                  for lambda-label = (format nil "~5,3f" lambda-value)
                                  do (case stage
-                                      (:decharge (let* ((input-topology-file (output-file stage-job :decharge-topology))
-                                                        (input-coordinate-file (output-file stage-job :decharge-coordinates))
+                                      (:decharge (let* ((input-topology-file (output-file stage-job :%DECHARGE-TOPOLOGY%))
+                                                        (input-coordinate-file (output-file stage-job :%DECHARGE-COORDINATES%))
                                                         (heat-job (make-heat-ti-step morph side stage lambda-label lambda-values
                                                                                      :input-topology-file input-topology-file
                                                                                      :input-coordinate-file input-coordinate-file))
@@ -207,8 +167,8 @@
                                                                          :input-topology-file input-topology-file
                                                                          :input-coordinate-file input-coordinate-file)
                                                            vdw-jobs)))
-                                      (:recharge (let* ((input-topology-file (output-file stage-job :recharge-topology))
-                                                        (input-coordinate-file (output-file stage-job :recharge-coordinates))
+                                      (:recharge (let* ((input-topology-file (output-file stage-job :%RECHARGE-TOPOLOGY%))
+                                                        (input-coordinate-file (output-file stage-job :%RECHARGE-COORDINATES%))
                                                         (heat-job (make-heat-ti-step morph side stage lambda-label lambda-values
                                                                                      :input-topology-file input-topology-file
                                                                                      :input-coordinate-file input-coordinate-file))
@@ -228,10 +188,10 @@
                                                               (:decharge (arguments :. (mapcar (lambda (job) (output-file job :-e)) decharge-jobs)))
                                                               (:vdw-bonded (arguments :. (mapcar (lambda (job) (output-file job :-e)) vdw-jobs)))
                                                               (:recharge (arguments :. (mapcar (lambda (job) (output-file job :-e)) recharge-jobs))))
-                                                   :outputs (arguments :stage-analysis (make-instance 'morph-side-stage-file
+                                                   :outputs (arguments :%STAGE-ANALYSIS% (make-instance 'morph-side-stage-file
                                                                                                       :morph morph :side side :stage stage
                                                                                                       :name "dvdl" :extension "dat"))
-                                                   :makefile-clause (standard-makefile-clause "python2 getdvdl.py %stage-analysis% %inputs%")))
+                                                   :makefile-clause (standard-makefile-clause "python2 getdvdl.py :%STAGE-ANALYSIS% :%INPUTS%")))
                                     stage-jobs))))
                 ;; combine stage-jobs
                 (let ((side-script (make-instance 'morph-side-script
@@ -243,8 +203,8 @@
                          (make-instance 'morph-side-cando-job
                                         :morph morph :side side
                                         :script side-script
-                                        :inputs (arguments :. (mapcar (lambda (job) (output-file job :stage-analysis)) stage-jobs))
-                                        :outputs (arguments :side-analysis (make-instance 'morph-side-file
+                                        :inputs (arguments :. (mapcar (lambda (job) (output-file job :%STAGE-ANALYSIS%)) stage-jobs))
+                                        :outputs (arguments :%SIDE-ANALYSIS% (make-instance 'morph-side-file
                                                                                           :morph morph :side side
                                                                                           :name "side-analysis" :extension "dat"))
                                         :makefile-clause (standard-cando-makefile-clause side-script :add-inputs t)))
@@ -259,8 +219,8 @@
                   (make-instance 'morph-cando-job
                                  :morph morph
                                  :script morph-script
-                                 :inputs (arguments :. (mapcar (lambda (job) (output-file job :side-analysis)) analysis-jobs))
-                                 :outputs (arguments :morph-analysis (make-instance 'morph-file
+                                 :inputs (arguments :. (mapcar (lambda (job) (output-file job :%SIDE-ANALYSIS%)) analysis-jobs))
+                                 :outputs (arguments :%MORPH-ANALYSIS% (make-instance 'morph-file
                                                                                     :morph morph
                                                                                     :name "morph-analysis" :extension "dat"))
                                  :makefile-clause (standard-cando-makefile-clause morph-script :add-inputs t)))
@@ -281,14 +241,14 @@
         (connect-graph
          (make-instance 'cando-job
                         :inputs (apply #'arguments
-                                       :feps feps-precharge
+                                       :%FEPS% feps-precharge
                                        (loop for am1-job in am1-jobs
                                              for output = (output-file am1-job :-o)
-                                             append (list :input output)))
-                        :outputs (arguments :output feps-out)
+                                             append (list :%INPUT% output)))
+                        :outputs (arguments :%OUTPUT% feps-out)
                         :script script
                         :makefile-clause (standard-cando-makefile-clause script)))
         (let ((morph-jobs (make-script-1-leap calculation :input-feps-file feps-out)))
           ;; Do more preparation
-          (generate-all-code calculation (list jupyter-job) (mapcar (lambda (job) (output-file job :morph-analysis)) morph-jobs)))
+          (generate-all-code calculation (list jupyter-job) (mapcar (lambda (job) (output-file job :%MORPH-ANALYSIS%)) morph-jobs)))
         jupyter-job))))

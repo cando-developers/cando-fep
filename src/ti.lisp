@@ -9,10 +9,10 @@
                '((load "source-dir:extensions;cando;src;lisp;start-cando.lisp")
                  (ql:quickload :fep)
                  (in-package :cando-user)
-                 (defparameter *feps* (fep:load-feps "%feps%"))
+                 (defparameter *feps* (fep:load-feps ":%FEPS%"))
                  (read-am1-charges *feps*)
                  (calculate-am1-bcc-charges *feps*)
-                 (fep:save-feps *feps* "%output%")
+                 (fep:save-feps *feps* ":%OUTPUT%")
                  (core:exit)
                  ))))
 
@@ -30,10 +30,10 @@
                  (leap:load-atom-type-rules "ATOMTYPE_GFF.DEF")
                  (leap:source "leaprc.ff14SB.redq")
                  (leap:source "leaprc.gaff")
-                 (defparameter *feps* (fep:load-feps "%input%"))
+                 (defparameter *feps* (fep:load-feps ":%INPUT%"))
                  (defparameter *receptor* (first (fep:receptors *feps*)))
-                 (defparameter *side-name* :%side-name%)
-                 (defparameter *morph* (find-morph-with-name :%morph-name% *feps*))
+                 (defparameter *side-name* :%SIDE-NAME%)
+                 (defparameter *morph* (find-morph-with-name :%MORPH-NAME% *feps*))
                  (defparameter *source* (fep:source *morph*))
                  (defparameter *target* (fep:target *morph*))
                  (fep:average-core-atom-positions *source* *target*)
@@ -48,10 +48,10 @@
                   (solvent-buffer *feps*)
                   (solvent-closeness *feps*))
                  (leap.add-ions:add-ions *system* :|Cl-| 0)
-                 (cando:save-mol2 *system* (ensure-directories-exist "%mol2%"))
-                 (ensure-directories-exist #P"%topology%")
-                 (ensure-directories-exist #P"%coordinates%")
-                 (leap.topology:save-amber-parm-format *system* "%topology%" "%coordinates%")
+                 (cando:save-mol2 *system* (ensure-directories-exist ":%MOL2%"))
+                 (ensure-directories-exist (pathname ":%TOPOLOGY%"))
+                 (ensure-directories-exist (pathname ":%COORDINATES%"))
+                 (leap.topology:save-amber-parm-format *system* ":%TOPOLOGY%" ":%COORDINATES%")
                  (core:exit)))))
 
 (defparameter *prepare-min-in*
@@ -66,8 +66,8 @@
 
    icfe = 1, ifsc = 1, clambda = 0.5, scalpha = 0.5, scbeta = 12.0,
    logdvdl = 0,
-   timask1 = '%timask1%', timask2 = '%timask2%',
-   scmask1 = '%scmask1%', scmask2 = '%scmask2%'
+   timask1 = ':%TIMASK1%', timask2 = ':%TIMASK2%',
+   scmask1 = ':%SCMASK1%', scmask2 = ':%SCMASK2%'
  /
  &ewald
  / 
@@ -91,8 +91,8 @@
 
    icfe = 1, ifsc = 1, clambda = 0.5, scalpha = 0.5, scbeta = 12.0,
    logdvdl = 0,
-   timask1 = '%timask1%', timask2 = '%timask2%',
-   scmask1 = '%scmask1%', scmask2 = '%scmask2%'
+   timask1 = ':%TIMASK1%', timask2 = ':%TIMASK2%',
+   scmask1 = ':%SCMASK1%', scmask2 = ':%SCMASK2%'
  /
  &ewald
  / 
@@ -126,8 +126,8 @@
 
    icfe = 1, ifsc = 1, clambda = 0.5, scalpha = 0.5, scbeta = 12.0,
    logdvdl = 0,
-   timask1 = '%timask1%', timask2 = '%timask2%',
-   scmask1 = '%scmask1%', scmask2 = '%scmask2%'
+   timask1 = ':%TIMASK1%', timask2 = ':%TIMASK2%',
+   scmask1 = ':%SCMASK1%', scmask2 = ':%SCMASK2%'
  /
  &ewald
  / 
@@ -136,21 +136,21 @@
 
 
 (defparameter *cpptraj-strip*
-"trajin %coordinates%
+"trajin :%COORDINATES%
 
 # remove the two ligands and keep the rest
 strip \":1,2\"
-outtraj %solvated% onlyframes 1
+outtraj :%SOLVATED% onlyframes 1
 
 # extract the first ligand
 unstrip
 strip \":2-999999\"
-outtraj %source% onlyframes 1
+outtraj :%SOURCE% onlyframes 1
 
 # extract the second ligand
 unstrip
 strip \":1,3-999999\"
-outtraj %target% onlyframes 1
+outtraj :%TARGET% onlyframes 1
 ")
 
 (defparameter *decharge*
@@ -164,16 +164,16 @@ outtraj %target% onlyframes 1
                  (leap:load-amber-params "frcmod.ionsjc_tip3p")
                  (ql:quickload :fep)
                  ;; load the fep-calculation
-                 (fep:load-feps "%feps%")
-                 (defparameter lsolv (cando:load-mol2 "%solvated%"))
-                 (defparameter lsource (cando:load-mol2 "%source%"))
+                 (fep:load-feps ":%FEPS%")
+                 (defparameter lsolv (cando:load-mol2 ":%SOLVATED%"))
+                 (defparameter lsource (cando:load-mol2 ":%SOURCE%"))
                  ;;decharge transformation
                  (defparameter decharge (cando:combine (chem:matter-copy lsource)
                                                        (chem:matter-copy lsource)
                                                        (chem:matter-copy lsolv)))
                  (leap.set-box:set-box decharge :vdw)
-                 (cando:save-mol2 decharge "%decharge-mol2%")
-                 (leap.topology:save-amber-parm-format decharge "%decharge-topology%" "%decharge-coordinates%")
+                 (cando:save-mol2 decharge ":%DECHARGE-MOL2%")
+                 (leap.topology:save-amber-parm-format decharge ":%DECHARGE-TOPOLOGY%" ":%DECHARGE-COORDINATES%")
                  (core:exit)
                  ))))
 
@@ -188,15 +188,15 @@ outtraj %target% onlyframes 1
                  (leap:load-Amber-Params "frcmod.ionsjc_tip3p")
                  (ql:quickload :fep)
                  ;; load the fep-calculation
-                 (fep:load-feps "%feps%")
-                 (defparameter lsolv (cando:load-mol2 "%solvated%"))
-                 (defparameter ltarget (cando:load-mol2 "%target%"))
+                 (fep:load-feps ":%FEPS%")
+                 (defparameter lsolv (cando:load-mol2 ":%SOLVATED%"))
+                 (defparameter ltarget (cando:load-mol2 ":%TARGET%"))
                  (defparameter recharge (cando:combine (chem:matter-copy ltarget)
                                                        (chem:matter-copy ltarget)
                                                        (chem:matter-copy lsolv)))
                  (leap.set-box:set-box recharge :vdw)
-                 (cando:save-mol2 recharge "%recharge-mol2%")
-                 (leap.topology:save-amber-parm-format recharge "%recharge-topology%" "%recharge-coordinates%")
+                 (cando:save-mol2 recharge ":%RECHARGE-MOL2%")
+                 (leap.topology:save-amber-parm-format recharge ":%RECHARGE-TOPOLOGY%" ":%RECHARGE-COORDINATES%")
                  (core:exit)
                  ))))
 
@@ -216,10 +216,10 @@ outtraj %target% onlyframes 1
    ntr = 1, restraint_wt = 5.00,
    restraintmask='!:WAT & !@H=',
 
-   icfe = 1, clambda = %lambda%, scalpha = 0.5, scbeta = 12.0,
+   icfe = 1, clambda = :%LAMBDA%, scalpha = 0.5, scbeta = 12.0,
    logdvdl = 0,
-   timask1 = '%timask1%', timask2 = '%timask2%',
-   ifsc = %ifsc%, crgmask = '%crgmask%'
+   timask1 = ':%TIMASK1%', timask2 = ':%TIMASK2%',
+   ifsc = :%IFSC%, CRGMASK = ':%CRGMASK%'
  /
 
  &ewald
@@ -251,10 +251,10 @@ outtraj %target% onlyframes 1
    ntr = 1, restraint_wt = 5.00,
    restraintmask='!:WAT & !@H=',
 
-   icfe = 1, clambda = %lambda%, scalpha = 0.5, scbeta = 12.0,
+   icfe = 1, clambda = :%LAMBDA%, scalpha = 0.5, scbeta = 12.0,
    logdvdl = 0,
-   timask1 = '%timask1%', timask2 = '%timask2%',
-   ifsc = %ifsc%, scmask1='%scmask1%', scmask2='%scmask2%', crgmask = '%crgmask%'
+   timask1 = ':%TIMASK1%', timask2 = ':%TIMASK2%',
+   ifsc = :%IFSC%, scmask1=':%SCMASK1%', scmask2=':%SCMASK2%', crgmask = ':%CRGMASK%'
  /
 
  &ewald
@@ -262,7 +262,7 @@ outtraj %target% onlyframes 1
 
  &wt
    type='TEMP0',
-   istep1 = 0, istep2 = 8000,                                      
+   istep1 = 0, istep2 = 8000,
    value1 = 50.0, value2 = 300.0
  /
 
@@ -282,12 +282,12 @@ outtraj %target% onlyframes 1
    ioutfm = 1, iwrap = 1,
    ntwe = 1000, ntwx = 10000, ntpr = 10000, ntwr = 20000,
 
-   icfe = 1, clambda = %lambda%, scalpha = 0.5, scbeta = 12.0,
+   icfe = 1, clambda = :%LAMBDA%, scalpha = 0.5, scbeta = 12.0,
    logdvdl = 1,
-   ifmbar = 1, bar_intervall = 1000, mbar_states = %lambda-windows-count%,
-   mbar_lambda = %lambda-windows%
-   timask1 = '%timask1%', timask2 = '%timask2%',
-   ifsc = %ifsc%, crgmask = '%crgmask%'
+   ifmbar = 1, bar_intervall = 1000, mbar_states = :%LAMBDA-WINDOWS-COUNT%,
+   mbar_lambda = :%LAMBDA-WINDOWS%
+   timask1 = ':%TIMASK1%', TIMASK2 = ':%TIMASK2%',
+   ifsc = :%IFSC%, crgmask = ':%CRGMASK%'
  /
 
  &ewald
@@ -307,12 +307,12 @@ outtraj %target% onlyframes 1
    ioutfm = 1, iwrap = 1,
    ntwe = 1000, ntwx = 10000, ntpr = 10000, ntwr = 20000,
 
-   icfe = 1, clambda = %lambda%, scalpha = 0.5, scbeta = 12.0,
+   icfe = 1, clambda = :%LAMBDA%, scalpha = 0.5, scbeta = 12.0,
    logdvdl = 1,
-   ifmbar = 1, bar_intervall = 1000, mbar_states = %lambda-windows-count%,
-   mbar_lambda = %lambda-windows%
-   timask1 = '%timask1%', timask2 = '%timask2%',
-   ifsc = %ifsc%, scmask1='%scmask1%', scmask2='%scmask2%', crgmask = '%crgmask%'
+   ifmbar = 1, bar_intervall = 1000, mbar_states = :%LAMBDA-WINDOWS-COUNT%,
+   mbar_lambda = :%LAMBDA-WINDOWS%
+   timask1 = ':%TIMASK1%', timask2 = ':%TIMASK2%',
+   ifsc = :%IFSC%, scmask1=':%SCMASK1%', scmask2=':%SCMASK2%', crgmask = ':%CRGMASK%'
  /
 
  &ewald
@@ -448,15 +448,38 @@ if __name__ == '__main__':
 
 
 (defparameter *combine-stages*
-  "(warn \"Combine the stages for files ~s~%\" %.parts%)
-(core:exit 0)
-")
+  (let ((*package* (find-package :keyword)))
+    (cl:format nil "~{~s~%~}"
+               '((load "source-dir:extensions;cando;src;lisp;start-cando.lisp")
+                 (ql:quickload :fep)
+                 (in-package :cando-user)
+                 (let ((total 0.0))
+                   (loop for filename in :%.parts%
+                         for pathname = (pathname filename)
+                         for contents = (with-open-file (fin pathname :direction :input) (read fin))
+                         for dg = (cdr (assoc :dg contents))
+                         do (format t "dg = ~f~%" dg)
+                            (incf total dg))
+                   (with-open-file (fout ":%SIDE-ANALYSIS%" :direction :output)
+                     (format fout "(( :total . ~f ))~%" total)))
+                 (core:exit 0)))))
 
 (defparameter *combine-sides*
-  "(warn \"Combine the sides for files ~s~%\" %.parts%)
-(core:exit 0)
-")
-
+  (let ((*package* (find-package :keyword)))
+    (cl:format nil "~{~s~%~}"
+               '((load "source-dir:extensions;cando;src;lisp;start-cando.lisp")
+                 (ql:quickload :fep)
+                 (in-package :cando-user)
+                 (let ((total 0.0))
+                   (loop for filename in :%.parts%
+                         for pathname = (pathname filename)
+                         for contents = (with-open-file (fin pathname :direction :input) (read fin))
+                         for dg = (cdr (assoc :total contents))
+                         do (format t "total = ~f~%" dg)
+                            (incf total dg))
+                   (with-open-file (fout ":%MORPH-ANALYSIS%" :direction :output)
+                     (format fout "(( :total . ~f ))~%" total)))
+                 (core:exit 0)))))
 
 (defclass ti-calculation ()
   ((compounds :initarg :compounds :accessor compounds)
@@ -788,16 +811,16 @@ its for and then create a new class for it."))
           for option = (option input)
           for file = (node input)
           if (eq option :.)
-            do (push (cons "%.parts%" (format nil "(list ~{\"~a\" ~})" (reverse (mapcar (lambda (x) (namestring (node-pathname x))) file))))
-                     substitutions)
+            do (let ((dot-parts (format nil "(list ~{\"~a\" ~})" (reverse (mapcar (lambda (x) (namestring (node-pathname x))) file)))))
+                 (push (cons :%.PARTS% dot-parts) substitutions))
           else
-            do (push (cons (format nil "%~a%" (string-downcase option))
+            do (push (cons (intern (string-upcase option) :keyword)
                            (namestring (node-pathname file)))
                      substitutions))
     (loop for output in (outputs job)
           for option = (option output)
           for file = (node output)
-          do (push (cons (format nil "%~a%" (string-downcase option))
+          do (push (cons (intern (string-upcase option) :keyword)
                          (namestring (node-pathname file)))
                    substitutions))
     substitutions))
@@ -811,12 +834,12 @@ its for and then create a new class for it."))
   (append
    (let* ((morph (morph node-file))
           (morph-mask (calculate-masks morph (mask-method calculation))))
-     (list* (cons "%MORPH-NAME%" (format nil "~a" (morph-string morph)))
+     (list* (cons :%MORPH-NAME% (format nil "~s" (morph-string morph)))
             (mask-substitutions morph-mask)))
    (call-next-method)))
 
 (defmethod substitutions (calculation job (node-file morph-side-file))
-  (list* (cons "%SIDE-NAME%" (format nil "~a" (side node-file)))
+  (list* (cons "%SIDE-NAME%" (format nil "~s" (side node-file)))
          (call-next-method)))
 
 (defmethod substitutions (calculation job (node-file morph-side-stage-file))
@@ -831,9 +854,9 @@ its for and then create a new class for it."))
   (error "substitutions called with job ~s and node-file ~s" job node-file))
 
 (defmethod substitutions (calculation (job morph-side-stage-lambda-amber-job) (node-file morph-side-stage-lambda-file))
-  (append (list (cons "%lambda%" (format nil "~f" (lambda% node-file)))
-                (cons "%lambda-windows%" (format nil "~{~f,~}" (lambda-values job)))
-                (cons "%lambda-windows-count%" (format nil "~a" (length (lambda-values job)))))
+  (append (list (cons :%LAMBDA% (format nil "~f" (lambda% node-file)))
+                (cons :%LAMBDA-WINDOWS% (format nil "~{~f,~}" (lambda-values job)))
+                (cons :%LAMBDA-WINDOWS-COUNT% (format nil "~a" (length (lambda-values job)))))
          (call-next-method)))
 
 (defun output-file (amber-job option)
@@ -905,13 +928,13 @@ its for and then create a new class for it."))
         collect (make-instance 'argument :option option :node node)))
 
 (defun standard-makefile-clause (command)
-  (format nil "%outputs% : %inputs%
-	runcmd -- %dependency-inputs% -- %dependency-outputs% -- \\
+  (format nil ":%OUTPUTS% : :%DEPENDENCY-INPUTS%
+	runcmd -- :%DEPENDENCY-INPUTS% -- :%DEPENDENCY-OUTPUTS% -- \\
 	~a~%" command))
 
 (defun standard-cando-makefile-clause (script &key add-inputs)
   (if add-inputs
-      (standard-makefile-clause (format nil "iclasp-boehm -l ~a -- %inputs%" (node-pathname script)))
+      (standard-makefile-clause (format nil "iclasp-boehm -l ~a -- :%INPUTS%" (node-pathname script)))
       (standard-makefile-clause (format nil "iclasp-boehm -l ~a" (node-pathname script)))))
 
 (defun make-ligand-sqm-step (ligand &key sqm-input-file)
@@ -920,7 +943,7 @@ its for and then create a new class for it."))
                   :ligand-name (name ligand)
                   :inputs (arguments :-i sqm-input-file)
                   :outputs (arguments :-o (make-instance 'sqm-output-file :name (name ligand)))
-                  :makefile-clause (standard-makefile-clause "sqm %option-inputs% -O %option-outputs%"))))
+                  :makefile-clause (standard-makefile-clause "sqm :%OPTION-INPUTS% -O :%OPTION-OUTPUTS%"))))
 
 (defun make-morph-side-prepare-job (morph side &key executable name script input-coordinate-file input-topology-file)
   (unless executable (error "You must provide an executable"))
@@ -938,23 +961,23 @@ its for and then create a new class for it."))
                                        :-p input-topology-file) ; $prmtop
                     :outputs (arguments :-o (make-instance 'morph-side-unknown-file
                                                            :morph morph :side side
-                                                           :name name :extension "out") ;  "%epl%/heat.out")
+                                                           :name name :extension "out")
                                         :-inf (make-instance 'morph-side-unknown-file
                                                              :morph morph :side side
-                                                             :name name :extension "info") ; (make-ti-file "-inf" "%epl%/heat.info")
+                                                             :name name :extension "info")
                                         :-e (make-instance 'morph-side-unknown-file
                                                            :morph morph :side side
-                                                           :name name :extension "en") ; (make-ti-file "-e" "%epl%/heat.en")
+                                                           :name name :extension "en")
                                         :-r (make-instance 'morph-side-restart-file
                                                            :morph morph :side side
-                                                           :name name) ; (make-ti-file "-r" "%epl%/heat.rst7")
+                                                           :name name)
                                         :-x (make-instance 'morph-side-trajectory-file
                                                            :morph morph :side side
-                                                           :name name :extension "nc") ;  (make-ti-file "-x" "%epl%/heat.nc")
+                                                           :name name :extension "nc")
                                         :-l (make-instance 'morph-side-unknown-file
                                                            :morph morph :side side
-                                                           :name name :extension "log")) ; (make-ti-file "-l" "%epl%/heat.log")))
-                    :makefile-clause (standard-makefile-clause (format nil "~a %option-inputs% -O %option-outputs%" executable))))))
+                                                           :name name :extension "log"))
+                    :makefile-clause (standard-makefile-clause (format nil "~a :%OPTION-INPUTS% -O :%OPTION-OUTPUTS%" executable))))))
 
 (defun make-morph-side-prepare (morph side &rest args &key input-coordinate-file input-topology-file)
   (unless input-coordinate-file (error "You must provide an input-coordinate-file"))
@@ -989,23 +1012,23 @@ its for and then create a new class for it."))
                     :morph morph
                     :side side
                     :script script-file
-                    :inputs (arguments :-i script-file :-p input-topology-file :coordinates input-coordinate-file)
-                    :outputs (arguments :solvated (make-instance 'morph-side-mol2-file
+                    :inputs (arguments :-i script-file :-p input-topology-file :%COORDINATES% input-coordinate-file)
+                    :outputs (arguments :%SOLVATED% (make-instance 'morph-side-mol2-file
                                                                  :morph morph
                                                                  :side side
                                                                  :name "solvated"
                                                                  :extension "mol2")
-                                        :source (make-instance 'morph-side-mol2-file
+                                        :%SOURCE% (make-instance 'morph-side-mol2-file
                                                                :morph morph
                                                                :side side
                                                                :name "source"
                                                                :extension "mol2")
-                                        :target (make-instance 'morph-side-mol2-file
+                                        :%TARGET% (make-instance 'morph-side-mol2-file
                                                                :morph morph
                                                                :side side
                                                                :name "target"
                                                                :extension "mol2"))
-                    :makefile-clause (standard-makefile-clause "cpptraj %option-inputs% %option-outputs%")))))
+                    :makefile-clause (standard-makefile-clause "cpptraj :%OPTION-INPUTS% :%OPTION-OUTPUTS%")))))
 
 (defun make-heat-ti-step (morph side stage lam lambda-values &key input-coordinate-file input-topology-file)
   (let ((script (make-instance 'morph-side-stage-lambda-amber-script
@@ -1030,20 +1053,20 @@ its for and then create a new class for it."))
                     :lambda-values lambda-values
                     :script script
                     :inputs (arguments :-i script
-                                       :-c input-coordinate-file ; (make-ti-file "-c" "%data%/ti-%e%.rst7")
-                                       :-ref input-coordinate-file ; (make-ti-file "-ref" "%data%/ti-%e%.rst7")
-                                       :-p input-topology-file) ; (make-ti-file "-p" "%data%/ti-%e%.parm7")
-                    :outputs (arguments :-o (make-instance 'morph-side-stage-lambda-unknown-file :morph morph :side side :stage stage :lambda% lam :name "heat" :extension "out") ;  "%epl%/heat.out")
-                                        :-inf (make-instance 'morph-side-stage-lambda-unknown-file :morph morph :side side :stage stage :lambda% lam :name "heat" :extension "info") ; (make-ti-file "-inf" "%epl%/heat.info")
-                                        :-e (make-instance 'morph-side-stage-lambda-unknown-file :morph morph :side side :stage stage :lambda% lam :name "heat" :extension "en") ; (make-ti-file "-e" "%epl%/heat.en")
-                                        :-r (make-instance 'morph-side-stage-lambda-restart-file :morph morph :side side :stage stage :lambda% lam :name "heat") ; (make-ti-file "-r" "%epl%/heat.rst7")
-                                        :-x (make-instance 'morph-side-stage-lambda-trajectory-file :morph morph :side side :stage stage :lambda% lam :name "heat" :extension "nc") ;  (make-ti-file "-x" "%epl%/heat.nc")
-                                        :-l (make-instance 'morph-side-stage-lambda-unknown-file :morph morph :side side :stage stage :lambda% lam :name "heat" :extension "log") ; (make-ti-file "-l" "%epl%/heat.log"))
+                                       :-c input-coordinate-file
+                                       :-ref input-coordinate-file
+                                       :-p input-topology-file)
+                    :outputs (arguments :-o (make-instance 'morph-side-stage-lambda-unknown-file :morph morph :side side :stage stage :lambda% lam :name "heat" :extension "out")
+                                        :-inf (make-instance 'morph-side-stage-lambda-unknown-file :morph morph :side side :stage stage :lambda% lam :name "heat" :extension "info")
+                                        :-e (make-instance 'morph-side-stage-lambda-unknown-file :morph morph :side side :stage stage :lambda% lam :name "heat" :extension "en")
+                                        :-r (make-instance 'morph-side-stage-lambda-restart-file :morph morph :side side :stage stage :lambda% lam :name "heat")
+                                        :-x (make-instance 'morph-side-stage-lambda-trajectory-file :morph morph :side side :stage stage :lambda% lam :name "heat" :extension "nc")
+                                        :-l (make-instance 'morph-side-stage-lambda-unknown-file :morph morph :side side :stage stage :lambda% lam :name "heat" :extension "log")
                                         )
-                    :makefile-clause "%outputs% : %inputs%
-	runcmd -- %dependency-inputs% -- %dependency-outputs% -- \\
-	pmemd.cuda %option-inputs% \\
-	  -O %option-outputs%"))))
+                    :makefile-clause ":%OUTPUTS% : :%INPUTS%
+	runcmd -- :%DEPENDENCY-INPUTS% -- :%DEPENDENCY-OUTPUTS% -- \\
+	pmemd.cuda :%OPTION-INPUTS% \\
+	  -O :%OPTION-OUTPUTS%"))))
 
 (defun make-ti-step (morph side stage lam lambda-values &key input-coordinate-file input-topology-file)
   (let ((script (make-instance 'morph-side-stage-lambda-amber-script
@@ -1053,14 +1076,10 @@ its for and then create a new class for it."))
                                :lambda% lam
                                :name "ti"
                                :script (cond
-                                         ((eq stage :decharge)
-                                          *decharge-recharge-ti-in*)
-                                         ((eq stage :recharge)
-                                          *decharge-recharge-ti-in*)
-                                         ((eq stage :vdw-bonded)
-                                          *vdw-ti-in*)
-                                         ((null stage)
-                                          *vdw-ti-in*)
+                                         ((eq stage :decharge) *decharge-recharge-ti-in*)
+                                         ((eq stage :recharge) *decharge-recharge-ti-in*)
+                                         ((eq stage :vdw-bonded) *vdw-ti-in*)
+                                         ((null stage) *vdw-ti-in*)
                                          (t (error "Illegal stage ~a for make-ti-step script - what do I do with this?" stage))))))
     (connect-graph
      (make-instance 'morph-side-stage-lambda-amber-job
@@ -1070,17 +1089,17 @@ its for and then create a new class for it."))
                     :inputs (arguments :-i script
                                        :-c input-coordinate-file
                                        :-p input-topology-file)
-                    :outputs (arguments :-o (make-instance 'morph-side-stage-lambda-unknown-file :morph morph :side side :stage stage :lambda% lam :name "ti001" :extension "out") ; list (make-ti-file "-o" "%epl%/ti001.out")
-                                        :-inf (make-instance 'morph-side-stage-lambda-unknown-file :morph morph :side side :stage stage :lambda% lam :name "ti001" :extension "info") ; (make-ti-file "-inf" "%epl%/ti001.info")
-                                        :-e (make-instance 'morph-side-stage-lambda-unknown-file :morph morph :side side :stage stage :lambda% lam :name "ti001" :extension "en") ; (make-ti-file "-e" "%epl%/ti001.en")
-                                        :-r (make-instance 'morph-side-stage-lambda-restart-file :morph morph :side side :stage stage :lambda% lam :name "ti001") ; (make-ti-file "-r" "%epl%/ti001.rst7")
-                                        :-x (make-instance 'morph-side-stage-lambda-trajectory-file :morph morph :side side :stage stage :lambda% lam :name "ti001" :extension "nc") ; (make-ti-file "-x" "%epl%/ti001.nc")
-                                        :-l (make-instance 'morph-side-stage-lambda-unknown-file :morph morph :side side :stage stage :lambda% lam :name "ti001" :extension "log") ; (make-ti-file "-l" "%epl%/ti001.log"))
+                    :outputs (arguments :-o (make-instance 'morph-side-stage-lambda-unknown-file :morph morph :side side :stage stage :lambda% lam :name "ti001" :extension "out")
+                                        :-inf (make-instance 'morph-side-stage-lambda-unknown-file :morph morph :side side :stage stage :lambda% lam :name "ti001" :extension "info")
+                                        :-e (make-instance 'morph-side-stage-lambda-unknown-file :morph morph :side side :stage stage :lambda% lam :name "ti001" :extension "en")
+                                        :-r (make-instance 'morph-side-stage-lambda-restart-file :morph morph :side side :stage stage :lambda% lam :name "ti001")
+                                        :-x (make-instance 'morph-side-stage-lambda-trajectory-file :morph morph :side side :stage stage :lambda% lam :name "ti001" :extension "nc")
+                                        :-l (make-instance 'morph-side-stage-lambda-unknown-file :morph morph :side side :stage stage :lambda% lam :name "ti001" :extension "log")
                                         )
-                    :makefile-clause "%outputs% : %inputs%
-	runcmd -- %dependency-inputs% -- %dependency-outputs% -- \\
-	pmemd.cuda %option-inputs% \\
-	  -O %option-outputs%"))))
+                    :makefile-clause ":%OUTPUTS% : :%INPUTS%
+	runcmd -- :%DEPENDENCY-INPUTS% -- :%DEPENDENCY-OUTPUTS% -- \\
+	pmemd.cuda :%OPTION-INPUTS% \\
+	  -O :%OPTION-OUTPUTS%"))))
 
 (defclass ti-path ()
   ((lambdas :initform 11 :initarg :lambdas :accessor lambdas)
@@ -1101,7 +1120,11 @@ its for and then create a new class for it."))
   (let (script-result)
     (loop for script = in-script then script-result
           for (match . substitution) in dict
-          do (setf script-result (cl-ppcre:regex-replace-all match script substitution))
+          for match-string = (cond
+                               ((stringp match) (format nil ":~a" match))
+                               ((symbolp match) (format nil "~s" match))
+                               (t (error "Illegal match ~s for regex key" match)))
+          do (setf script-result (cl-ppcre:regex-replace-all match-string script substitution))
           finally (return-from replace-all script-result))))
 
 #+(or)
@@ -1153,7 +1176,7 @@ added to inputs and outputs but not option-inputs or option-outputs"
                  (progn
                    (push (string-downcase (option input)) option-inputs)
                    (push (namestring (node-pathname (node input))) option-inputs))
-                 (push (cons (format nil "%~a%" (string-downcase (option input))) (namestring (node-pathname (node input)))) extra-substitutions)))
+                 (push (cons (intern (string-upcase (option input)) :keyword) (namestring (node-pathname (node input)))) extra-substitutions)))
     (when dot-option-arg
       (mapc (lambda (one) (pushnew (namestring (node-pathname one)) inputs :test #'string=)) (node dot-option-arg))
       (push "--" option-inputs)
@@ -1164,16 +1187,16 @@ added to inputs and outputs but not option-inputs or option-outputs"
                  (progn
                    (push (string-downcase (option output)) option-outputs)
                    (push (namestring (node-pathname (node output))) option-outputs))
-                 (push (cons (format nil "%~a%" (string-downcase (option output))) (namestring (node-pathname (node output)))) extra-substitutions)))
+                 (push (cons (intern (string-upcase (option output)) :keyword) (namestring (node-pathname (node output)))) extra-substitutions)))
     (append
-     (list* (cons "%dependency-inputs%" (format nil "~{~a ~}" (append dependency-inputs (reverse inputs))))
-            (cons "%inputs%" (format nil "~{~a ~}" (reverse inputs)))
-            (cons "%dependency-outputs%" (format nil "~{~a ~}" (reverse outputs)))
-            (cons "%outputs%" (format nil "~{~a ~}" (reverse outputs)))
-            (cons "%option-inputs%" (format nil "~{~a ~}" (reverse option-inputs)))
-            (cons "%option-outputs%" (format nil "~{~a ~}" (reverse option-outputs)))
+     (list* (cons :%DEPENDENCY-INPUTS% (format nil "~{~a ~}" (append dependency-inputs (reverse inputs))))
+            (cons :%INPUTS% (format nil "~{~a ~}" (reverse inputs)))
+            (cons :%DEPENDENCY-OUTPUTS% (format nil "~{~a ~}" (reverse outputs)))
+            (cons :%OUTPUTS% (format nil "~{~a ~}" (reverse outputs)))
+            (cons :%OPTION-INPUTS% (format nil "~{~a ~}" (reverse option-inputs)))
+            (cons :%OPTION-OUTPUTS% (format nil "~{~a ~}" (reverse option-outputs)))
             (if script-code
-                (list (cons "%script-code%" (format nil "~a" script-code)))
+                (list (cons :%SCRIPT-CODE% (format nil "~a" script-code)))
                 nil))
      extra-substitutions)))
 
