@@ -286,7 +286,7 @@ outtraj :%TARGET% onlyframes 1
    logdvdl = 1,
    ifmbar = 1, bar_intervall = 1000, mbar_states = :%LAMBDA-WINDOWS-COUNT%,
    mbar_lambda = :%LAMBDA-WINDOWS%
-   timask1 = ':%TIMASK1%', TIMASK2 = ':%TIMASK2%',
+   timask1 = ':%TIMASK1%', timask2 = ':%TIMASK2%',
    ifsc = :%IFSC%, crgmask = ':%CRGMASK%'
  /
 
@@ -381,24 +381,28 @@ if __name__ == '__main__':
 
   data = OrderedDict()
 
+  fout = open(output_filename,'w')
   for window in windows:
     cwd = os.getcwd()
 #    os.chdir(os.path.dirname(os.path.realpath(window)))
-
+###    print >>fout, 'window = %s' % window
     dVdl = OnlineAvVar()    
     ln = 0
 
-    for en in windows: # used to be glob.glob(glob_pattern):
+    for en in [ window ]: # used to be glob.glob(glob_pattern):
+###      print >>fout, 'en  %s' % en
       with open(en, 'r') as en_file:
         for line in en_file:
           ln += 1
-
           if ln > skip and line.startswith('L9') and not 'dV/dlambda' in line:
-             dVdl.accumulate(float(line.split()[5]) )
+             val = line.split()[5]
+###             print >>fout, 'ln = %d | val = %s' % (ln, val)
+             dVdl.accumulate(float(val))
 
     mean, std = dVdl.get_stat()
     window_dir = os.path.dirname(os.path.realpath(window))
     window_name = window_dir[window_dir.rfind('/')+1:]
+###    print >>fout, 'dVdl.step = %f' % dVdl.step
     data[float(window_name)] = (mean, std / math.sqrt(dVdl.step), std)
 
 #    os.chdir(cwd)
@@ -1177,9 +1181,9 @@ added to inputs and outputs but not option-inputs or option-outputs"
                    (push (namestring (node-pathname (node input))) option-inputs))
                  (push (cons (intern (string-upcase (option input)) :keyword) (namestring (node-pathname (node input)))) extra-substitutions)))
     (when dot-option-arg
-      (mapc (lambda (one) (pushnew (namestring (node-pathname one)) inputs :test #'string=)) (node dot-option-arg))
+      (mapc (lambda (one) (pushnew (namestring (node-pathname one)) inputs :test #'string=)) (reverse (node dot-option-arg)))
       (push "--" option-inputs)
-      (mapc (lambda (one) (pushnew (namestring (node-pathname one)) option-inputs :test #'string=)) (node dot-option-arg)))
+      (mapc (lambda (one) (pushnew (namestring (node-pathname one)) option-inputs :test #'string=)) (reverse (node dot-option-arg))))
     (loop for output in (outputs job)
           do (pushnew (namestring (node-pathname (node output))) outputs :test #'string=)
              (if (char= (char (string (option output)) 0) #\-)
