@@ -164,9 +164,6 @@
         (chem:apply-transform-to-atoms residue residue-to-core)))
     (values residue in-atom-vector)))
 
-
-
-
 (defvar *core-group* nil)
 (defvar *side-chain-groups* nil)
 (defvar *map-names-numbers* nil)
@@ -284,7 +281,6 @@
       (print-unreadable-object (obj stream)
         (format stream "~a" (class-name (class-of obj))))))
 
-
 (defclass fep-morph ()
   ((source :initarg :source :accessor source)
    (target :initarg :target :accessor target)
@@ -312,6 +308,7 @@
    (side-chain-atoms :initarg :side-chain-atoms :accessor side-chain-atoms)
    (molecule :initarg :molecule :accessor molecule)
    (atom-order :initarg :atom-order :accessor atom-order)
+   (net-charge :initform 0.0  :initarg :net-charge :accessor net-charge)
    (am1-charges :initarg :am1-charges :accessor am1-charges)
    (am1-bcc-charges :initarg :am1-bcc-charges :accessor am1-bcc-charges)))
 
@@ -708,13 +705,35 @@ Otherwise return NIL."
             do (format t "file ~a done~%" (name ligand))
             do (incf count)))))
 
+(defun balance-charges (atom-charge-hash-table net-charge)
+  (let ((charge-sum 0.0)
+        (num-charges 0))
+    (maphash (lambda (atm charge)
+               (format t "Charge: ~s ~f~%" atm charge)
+               (incf charge-sum charge)
+               (incf num-charges))
+             atom-charge-hash-table)
+    (format t "Total charge: ~f  number of charges: ~d  expected net-charge: ~f~%" charge-sum num-charges net-charge)
+    (let ((charge-part (/ (- charge-sum net-charge) num-charges))
+          (new-charge-total 0.0))
+      (format t "Charge correction: ~f~%" charge-part)
+      (maphash (lambda (atm charge)
+                 (let ((new-charge (- charge charge-part)))
+                   (format t "Updating charge for atom ~s from ~f to ~f~%" atm charge new-charge)
+                   (setf (gethash atm atom-charge-hash-table) new-charge)
+                   (incf new-charge-total new-charge)))
+               atom-charge-hash-table)
+      (format t "After adding net-charge the total charge is ~f~%" new-charge-total)
+      (when (> (abs new-charge-total) 1.0e-5)
+        (warn "After balance-charges the new-charge-total of the molecule is ~g~%" new-charge-total)))))
 
 (defun calculate-am1-bcc-charges (calculation)
   (loop for fep in (ligands calculation)
         for am1-charges = (am1-charges fep)
         for bcc-corrections = (charges::calculate-bcc-corrections (fep::molecule fep))
         for am1-bcc-charges = (charges::combine-am1-bcc-charges (am1-charges fep) bcc-corrections)
-        do (setf (am1-bcc-charges fep) am1-bcc-charges)
+        do (balance-charges am1-bcc-charges (net-charge fep))
+           (setf (am1-bcc-charges fep) am1-bcc-charges)
            (maphash (lambda (atm charge)
                       (chem:set-charge atm charge))
                     am1-bcc-charges)))

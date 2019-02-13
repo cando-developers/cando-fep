@@ -39,10 +39,16 @@
                  (fep:average-core-atom-positions *source* *target*)
                  (defparameter *ligands* (cando:combine (fep:molecule *source*)
                                                         (fep:molecule *target*)))
-                 (if (eq *side-name* ':ligands)
-                     (defparameter *system* (chem:matter-copy *ligands*))
-                     (defparameter *system* (cando:combine (chem:matter-copy *ligands*)
-                                                           (chem:matter-copy *receptor*))))
+                 (format t "*side-name* --> ~a~%" *side-name*)
+                 (cond
+                   ((eq *side-name* :ligand)
+                    (format t "Creating system by combining ligands~%")
+                    (defparameter *system* (chem:matter-copy *ligands*)))
+                   ((eq *side-name* :complex)
+                    (format t "Creating system by combining ligands and receptor~%")
+                    (defparameter *system* (cando:combine (chem:matter-copy *ligands*)
+                                                          (chem:matter-copy *receptor*))))
+                   (t (error "Unknown *side-name* ~s - must be one of :ligand or :complex" *side-name*)))
                  (leap:solvate-box *system*
                   (leap.core:lookup-variable (solvent-box *feps*))
                   (solvent-buffer *feps*)
@@ -1001,7 +1007,7 @@ its for and then create a new class for it."))
          (heat.rst (output-file heat-job :-r))
          (press-job (make-morph-side-prepare-job morph side
                                                  :name "press"
-                                                 :executable "pmemd.cuda"
+                                                 :executable "pmemd"
                                                  :script *prepare-press-in*
                                                  :input-coordinate-file heat.rst
                                                  :input-topology-file input-topology-file)))
@@ -1068,7 +1074,7 @@ its for and then create a new class for it."))
                                         )
                     :makefile-clause ":%OUTPUTS% : :%INPUTS%
 	runcmd -- :%DEPENDENCY-INPUTS% -- :%DEPENDENCY-OUTPUTS% -- \\
-	pmemd.cuda :%OPTION-INPUTS% \\
+	pmemd.cuda -AllowSmallBox :%OPTION-INPUTS% \\
 	  -O :%OPTION-OUTPUTS%"))))
 
 (defun make-ti-step (morph side stage lam lambda-values &key input-coordinate-file input-topology-file)
@@ -1101,7 +1107,7 @@ its for and then create a new class for it."))
                                         )
                     :makefile-clause ":%OUTPUTS% : :%INPUTS%
 	runcmd -- :%DEPENDENCY-INPUTS% -- :%DEPENDENCY-OUTPUTS% -- \\
-	pmemd.cuda :%OPTION-INPUTS% \\
+	pmemd.cuda -AllowSmallBox :%OPTION-INPUTS% \\
 	  -O :%OPTION-OUTPUTS%"))))
 
 (defclass ti-path ()
