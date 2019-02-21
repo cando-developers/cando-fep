@@ -2,8 +2,8 @@
 
 (defmethod draw-node (id (node fep:job) stream)
   (if (fep:script node)
-      (format stream "~a [label = \"~a.~a\" ];~%" id (fep:name (fep:script node)) (fep:extension (fep:script node)))
-      (format stream "~a [label = \"~a\" ];~%" id (class-name (class-of node)))))
+      (format stream "~a [label = \"~a.~a\", style=\"filled,solid\",fillcolor=\"yellow\" ];~%" id (fep:name (fep:script node)) (fep:extension (fep:script node)))
+      (format stream "~a [label = \"~a\", style=\"filled,solid\",fillcolor=\"#FFE0E0\" ];~%" id (class-name (class-of node)))))
 
 (defmethod draw-node (id (node fep:amber-job-mixin) stream)
   (format stream "~a [label = \"~a\" ];~%" id (fep:name (fep:script node))))
