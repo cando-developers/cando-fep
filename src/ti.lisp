@@ -731,13 +731,25 @@ its for and then create a new class for it."))
 ;;;
 ;;;
 
-(defclass cando-job (amber:job)
+(defclass job ()
+  ((script :initform nil :initarg :script :accessor script)
+   (inputs :initform nil :initarg :inputs :accessor inputs)
+   (outputs :initform nil :initarg :outputs :accessor outputs)
+   (parameters :initform nil :initarg :parameters :accessor parameters)
+   (makefile-clause :initarg :makefile-clause :accessor makefile-clause)))
+
+(defclass jupyter-job (job)
+  ()
+  (:default-initargs
+   :makefile-clause nil))
+
+(defclass cando-job (job)
   ())
 
 (defclass read-charges-job (cando-job)
   ())
                      
-(defclass scripted-job (amber:job)
+(defclass scripted-job (job)
   ())
 
 (defclass morph-job (scripted-job)
@@ -761,7 +773,7 @@ its for and then create a new class for it."))
 (defclass morph-cando-job (morph-job cando-job-mixin)
   ())
 
-(defclass ligand-sqm-job (amber:job sqm-job-mixin)
+(defclass ligand-sqm-job (job sqm-job-mixin)
   ((ligand-name :initarg :ligand-name :accessor ligand-name)))
 
 (defclass morph-side-job (morph-job)
@@ -1188,7 +1200,7 @@ added to inputs and outputs but not option-inputs or option-outputs"
     (with-open-file (fout (ensure-directories-exist pathname) :direction :output :if-exists :supersede)
       (write-string code fout)))
 
-(defmethod generate-code (calculation (job amber:job) makefile visited-nodes)
+(defmethod generate-code (calculation (job job) makefile visited-nodes)
   ;; Generate script
   (let ((script (script job))
         script-code)

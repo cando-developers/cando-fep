@@ -26,7 +26,6 @@
     `(loop ,@(first clauses) do (powerloop (,@(rest clauses)) ,@final))))
  
 (defun make-script-1-leap (calculation &key input-feps-file)
-  (warn "in default-script-1-leap")
   (with-top-directory (calculation)
     (let (work-list morph-jobs)
       (powerloop
@@ -229,7 +228,7 @@
 
 (defmethod generate-jobs (calculation)
   (let ((*default-pathname-defaults* (merge-pathnames (top-directory calculation) *default-pathname-defaults*)))
-    (let* ((jupyter-job (make-instance 'amber:jupyter-job))
+    (let* ((jupyter-job (make-instance 'jupyter-job))
            (am1-jobs (setup-am1-calculations jupyter-job calculation))
            (feps-precharge (make-instance 'feps-file :name "precharge")))
       (fep:save-feps calculation (node-pathname feps-precharge))

@@ -47,6 +47,7 @@
   (:use #:common-lisp)
   (:shadowing-import-from :chem "ATOM")
   (:export
+   #:job
    #:load-chem-draw-fep
    #:calculation
    #:jobs
