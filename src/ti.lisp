@@ -731,24 +731,13 @@ its for and then create a new class for it."))
 ;;;
 ;;;
 
-(defclass base-job ()
-  ((script :initform nil :initarg :script :accessor script)
-   (inputs :initform nil :initarg :inputs :accessor inputs)
-   (outputs :initform nil :initarg :outputs :accessor outputs)
-   (makefile-clause :initarg :makefile-clause :accessor makefile-clause)))
-
-(defclass jupyter-job (base-job)
-  ()
-  (:default-initargs
-   :makefile-clause nil))
-
-(defclass cando-job (base-job)
+(defclass cando-job (amber:job)
   ())
 
 (defclass read-charges-job (cando-job)
   ())
                      
-(defclass scripted-job (base-job)
+(defclass scripted-job (amber:job)
   ())
 
 (defclass morph-job (scripted-job)
@@ -772,7 +761,7 @@ its for and then create a new class for it."))
 (defclass morph-cando-job (morph-job cando-job-mixin)
   ())
 
-(defclass ligand-sqm-job (base-job sqm-job-mixin)
+(defclass ligand-sqm-job (amber:job sqm-job-mixin)
   ((ligand-name :initarg :ligand-name :accessor ligand-name)))
 
 (defclass morph-side-job (morph-job)
@@ -1136,29 +1125,6 @@ its for and then create a new class for it."))
           do (setf script-result (cl-ppcre:regex-replace-all match-string script substitution))
           finally (return-from replace-all script-result))))
 
-#+(or)
-(defun generate-steps (ti-path)
-  (let* ((delta (/ 1.0 (1- (lambdas ti-path))))
-         (lambda-values (loop for window from 0 below (lambdas ti-path))))
-    (format t "delta  = ~a   lambdas = ~a~%" delta (lambdas ti-path))
-    (loop for window in lambda-values
-          for lambda-val = 0.0 then (incf lambda-val delta)
-          for step-info = (make-ti-step-info lambda-val)
-          for heat-step = (make-heat-step lambda-val step-info)
-          for ti-step = (make-ti-step lambda-val step-info lambda-values)
-          do (format t "Adding step lambda ~f~%" lambda-val)
-          do (maybe-add-step ti-path heat-step)
-             (maybe-add-step ti-path ti-step))))
-
-#+(or)
-(defun make-ti-path (lambdas start end)
-  (let ((path (make-instance 'ti-path :lambdas lambdas
-                                      :source-compound start
-                                      :target-compound end)))
-    (generate-steps path)
-    path))
-
-
 (defun makefile-substitutions (calculation job script-code)
   "This returns an alist of label/string substitutions.
 The fancy part is the inputs - inputs that have the form :-xxx are added as option-inputs
@@ -1222,7 +1188,7 @@ added to inputs and outputs but not option-inputs or option-outputs"
     (with-open-file (fout (ensure-directories-exist pathname) :direction :output :if-exists :supersede)
       (write-string code fout)))
 
-(defmethod generate-code (calculation (job base-job) makefile visited-nodes)
+(defmethod generate-code (calculation (job amber:job) makefile visited-nodes)
   ;; Generate script
   (let ((script (script job))
         script-code)

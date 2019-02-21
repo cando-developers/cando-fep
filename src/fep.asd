@@ -9,6 +9,7 @@
                 :cando
                 :charges
                 :leap
+                :amber
                 :alexandria
                 :cl-jupyter
                 (:version :esrap "0.15")

@@ -95,7 +95,6 @@
    #:calculate-am1-bcc-charges
    #:complex
    #:sqm-job-mixin
-   #:base-job
    #:amber-job-mixin
    #:cpptraj-job-mixin
    #:pattern-atoms

@@ -229,7 +229,7 @@
 
 (defmethod generate-jobs (calculation)
   (let ((*default-pathname-defaults* (merge-pathnames (top-directory calculation) *default-pathname-defaults*)))
-    (let* ((jupyter-job (make-instance 'jupyter-job))
+    (let* ((jupyter-job (make-instance 'amber:jupyter-job))
            (am1-jobs (setup-am1-calculations jupyter-job calculation))
            (feps-precharge (make-instance 'feps-file :name "precharge")))
       (fep:save-feps calculation (node-pathname feps-precharge))

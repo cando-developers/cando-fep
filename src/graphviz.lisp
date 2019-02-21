@@ -1,6 +1,6 @@
 (in-package :fepdot)
 
-(defmethod draw-node (id (node fep:base-job) stream)
+(defmethod draw-node (id (node amber:job) stream)
   (if (fep:script node)
       (format stream "~a [label = \"~a.~a\" ];~%" id (fep:name (fep:script node)) (fep:extension (fep:script node)))
       (format stream "~a [label = \"~a\" ];~%" id (class-name (class-of node)))))
