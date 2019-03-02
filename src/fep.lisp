@@ -1,5 +1,8 @@
 (in-package :fep)
 
+(defun version ()
+  *fep-version*)
+
 (defun core-group-p (group)
   (loop for atom in group
         for label = (chem:matter-get-property-or-default atom :label nil)
@@ -153,6 +156,8 @@
                  (setf in-atom-vector (make-instance 'bond-vector :start-vector start-vec :direction dir))
                  (chem:remove-bond-to atom labeled-atom))
           else do (chem:add-matter residue atom))
+    (unless in-atom-vector
+      (error "There is no in-atom-vector for atoms: ~a~%" atoms))
     (let* ((cross (geom:vcross (geom:vnormalized (direction in-atom-vector)) (geom:vnormalized (direction core-vector))))
            (angle (* 1.0 (asin (geom:vlength cross))))
            (residue-to-origin (geom:make-m4-translate (geom:v* (start-vector in-atom-vector) -1.0)))
@@ -325,10 +330,12 @@
 (defun mol2-safe-atom-name (calculation name)
   name)
 
+(defclass receptor ()
+  ((structure :initarg :structure :accessor structure)))
 
 (defclass calculation ()
   ((receptors :initform nil :accessor receptors)
-   (receptor-files :initform nil :initarg :receptor-files :accessor receptor-files)
+   (receptor-strings :initarg :receptor-strings :accessor receptor-strings)
    (ligands :initarg :ligands :accessor ligands)
    (mask-method :initform :default :initarg :mask-method :accessor mask-method)
    (core-topology :initarg :core-topology :accessor core-topology)

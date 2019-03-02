@@ -24,6 +24,7 @@
   ((:file "packages")
    (:file "jsme")
    (:file "graph2")
+   (:file "fep-version")
    (:file "fep")
    (:file "script")
    (:file "ti")

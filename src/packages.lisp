@@ -55,6 +55,8 @@
    #:generate-files
    #:stage
    #:receptors
+   #:version
+   #:structure
    #:ligands
    #:setup-ligands
    #:argument

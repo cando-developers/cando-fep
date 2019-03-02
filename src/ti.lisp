@@ -31,7 +31,7 @@
                  (leap:source "leaprc.ff14SB.redq")
                  (leap:source "leaprc.gaff")
                  (defparameter *feps* (fep:load-feps ":%INPUT%"))
-                 (defparameter *receptor* (first (fep:receptors *feps*)))
+                 (defparameter *receptor* (fep:structure (first (fep:receptors *feps*))))
                  (defparameter *side-name* :%SIDE-NAME%)
                  (defparameter *morph* (find-morph-with-name :%MORPH-NAME% *feps*))
                  (defparameter *source* (fep:source *morph*))
@@ -1233,6 +1233,8 @@ added to inputs and outputs but not option-inputs or option-outputs"
         (write-file-if-it-has-changed
          makefile-pathname
          (with-output-to-string (makefile)
+           (format makefile "# cando version ~a~%" (lisp-implementation-version))
+           (format makefile "# fep version ~a~%" (fep:version))
            (format makefile "all : ~{~a ~}~%" (mapcar (lambda (file) (node-pathname file)) final-outputs))
            (format makefile "~aecho DONE~%" #\tab)
            (format makefile "~%")
@@ -1271,25 +1273,25 @@ added to inputs and outputs but not option-inputs or option-outputs"
 
 
 (defun save-feps (feps feps-file)
-  (setf (receptor-files feps) nil)
-  (let* ((receptors (receptors feps)))
+  (setf (receptor-strings feps) nil)
+  (let* ((receptors (receptors feps))
+         reversed-receptor-strings)
     (loop for receptor in receptors
-          for receptor-file = (merge-pathnames (make-pathname :name (pathname-name (string (chem:get-name receptor)))
-                                                             :type "mol2" :defaults feps-file)
-                                              *default-pathname-defaults*)
-          do (format t "Writing receptor ~a to *d-p-d* -> ~s : ~s~%" (chem:get-name receptor) *default-pathname-defaults* (translate-logical-pathname receptor-file))
-             (format t "(node-pathname feps-file) -> ~s~%" feps-file)
-          do (chem:save-mol2 receptor (namestring receptor-file))
-             (push (pathname (enough-namestring receptor-file)) (receptor-files feps))))
+          for receptor-string = (chem:aggregate-as-mol2-string receptor)
+          do (push receptor-string reversed-receptor-strings))
+    (setf (receptor-strings feps) (nreverse reversed-receptor-strings)))
   (cando:save-cando feps feps-file))
 
 
 (defun load-feps (feps-file)
   "Load a feps database and register the topologys"
-  (let ((feps (cando:load-cando feps-file)))
-    (loop for receptor-file in (receptor-files feps)
-          for receptor = (chem:load-mol2 (namestring receptor-file))
-          do (push receptor (receptors feps)))
+  (let ((feps (cando:load-cando feps-file))
+        reversed-receptors)
+    (loop for receptor-string in (receptor-strings feps)
+          for receptor = (with-input-from-string (sin receptor-string)
+                           (chem:read-mol2 sin))
+          do (push receptor reversed-receptors))
+    (setf (receptors feps) (nreverse reversed-receptors))
     (cando:register-topology (chem:get-name (core-topology feps)) (core-topology feps))
     (maphash (lambda (part-name name-topologys)
                (format t "name-topologys = ~s~%" name-topologys)
