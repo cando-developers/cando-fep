@@ -1,7 +1,7 @@
 (in-package :fep)
 
 (defun version ()
-  *fep-version*)
+  *version*)
 
 (defun core-group-p (group)
   (loop for atom in group
@@ -329,9 +329,6 @@
 
 (defun mol2-safe-atom-name (calculation name)
   name)
-
-(defclass receptor ()
-  ((structure :initarg :structure :accessor structure)))
 
 (defclass calculation ()
   ((receptors :initform nil :accessor receptors)

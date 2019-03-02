@@ -56,7 +56,6 @@
    #:stage
    #:receptors
    #:version
-   #:structure
    #:ligands
    #:setup-ligands
    #:argument

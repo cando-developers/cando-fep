@@ -31,7 +31,7 @@
                  (leap:source "leaprc.ff14SB.redq")
                  (leap:source "leaprc.gaff")
                  (defparameter *feps* (fep:load-feps ":%INPUT%"))
-                 (defparameter *receptor* (fep:structure (first (fep:receptors *feps*))))
+                 (defparameter *receptor* (first (fep:receptors *feps*)))
                  (defparameter *side-name* :%SIDE-NAME%)
                  (defparameter *morph* (find-morph-with-name :%MORPH-NAME% *feps*))
                  (defparameter *source* (fep:source *morph*))
