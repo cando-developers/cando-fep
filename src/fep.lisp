@@ -629,8 +629,12 @@
                                                    (list :windows windows)))
                      ;; Force a direction for the calculation AA->AB and not AB->AA
                      do (if (string< (string (name fep)) (string (name other)))
-                            (push (apply #'make-instance 'fep-morph :source fep :target other stages-lambda) (morphs jobs))
-                            (push (apply #'make-instance 'fep-morph :source other :target fep stages-lambda) (morphs jobs))))))
+                            (progn
+                              (format t "Morph from source: ~s to target: ~s~%" fep other)
+                              (push (apply #'make-instance 'fep-morph :source fep :target other stages-lambda) (morphs jobs)))
+                            (progn
+                              (format t "Morph from source: ~s to target: ~s~%" other fep)
+                              (push (apply #'make-instance 'fep-morph :source other :target fep stages-lambda) (morphs jobs)))))))
     (setf (jobs calculation) jobs)))
 
 #+(or)
@@ -842,13 +846,13 @@ METHOD controls how the masks are calculated"
     (error "stage ~s must be one of nil :vdw-bonded :decharge :recharge" stage))
   (cond
     ((eq stage :decharge)
-     (list (cons :%CRGMASK% (target-scmask mask))
+     (list (cons :%CRGMASK% (source-scmask mask))
            (cons :%IFSC% "0")))
     ((eq stage :vdw-bonded)
      (list (cons :%CRGMASK% (format nil "~a|~a" (source-scmask mask) (target-scmask mask))) 
            (cons :%IFSC% "1")))
     ((eq stage :recharge)
-     (list (cons :%CRGMASK% (source-scmask mask))
+     (list (cons :%CRGMASK% (target-scmask mask))
            (cons :%IFSC% "0")))
     (t nil)))
 
