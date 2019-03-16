@@ -80,6 +80,10 @@
    #:morph-side-file
    #:load-feps
    #:save-feps
+   #:solvent-box
+   #:solvent-buffer
+   #:solvent-closeness
+   #:solvent-residue-name
    #:source
    #:target
    #:morphs

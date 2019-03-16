@@ -4,6 +4,7 @@
   ((solvent-box :initform :tip3pbox :initarg :solvent-box :accessor solvent-box)
    (solvent-buffer :initform 12.0 :initarg :solvent-buffer :accessor solvent-buffer)
    (solvent-closeness :initform 0.75 :initarg :solvent-closeness :accessor solvent-closeness)
+   (solvent-residue-name :initform :WAT :initarg :solvent-residue-name :accessor solvent-residue-name)
    (script-0-setup :initform 'default-script-0-setup :accessor script-0-setup)
    (script-1-leap :initform 'default-script-1-leap :accessor script-1-leap)))
 

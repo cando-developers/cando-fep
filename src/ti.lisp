@@ -168,10 +168,12 @@ outtraj :%TARGET% onlyframes 1
                  (leap:source "leaprc.ff14SB.redq")
                  (leap:source "leaprc.gaff")
                  (leap:load-amber-params "frcmod.ionsjc_tip3p")
-                 (ql:quickload :fep)
                  ;; load the fep-calculation
-                 (fep:load-feps ":%FEPS%")
+                 (defparameter *feps* (fep:load-feps ":%FEPS%"))
                  (defparameter lsolv (cando:load-mol2 ":%SOLVATED%"))
+                 ;; after cpptraj molecules are merged and it drops solvent information - so we need to add it back
+                 (cando:maybe-split-molecules-in-aggregate lsolv)
+                 (cando:assign-solvent-molecules-using-residue-name lsolv (fep:solvent-residue-name *feps*))
                  (defparameter lsource (cando:load-mol2 ":%SOURCE%"))
                  ;;decharge transformation
                  (defparameter decharge (cando:combine (chem:matter-copy lsource)
@@ -192,10 +194,12 @@ outtraj :%TARGET% onlyframes 1
                  (leap:source "leaprc.ff14SB.redq")
                  (leap:source "leaprc.gaff")
                  (leap:load-Amber-Params "frcmod.ionsjc_tip3p")
-                 (ql:quickload :fep)
                  ;; load the fep-calculation
-                 (fep:load-feps ":%FEPS%")
+                 (defparameter *feps* (fep:load-feps ":%FEPS%"))
                  (defparameter lsolv (cando:load-mol2 ":%SOLVATED%"))
+                 ;; after cpptraj molecules are merged and it drops solvent information - so we need to add it back
+                 (cando:maybe-split-molecules-in-aggregate lsolv)
+                 (cando:assign-solvent-molecules-using-residue-name lsolv (fep:solvent-residue-name *feps*))
                  (defparameter ltarget (cando:load-mol2 ":%TARGET%"))
                  (defparameter recharge (cando:combine (chem:matter-copy ltarget)
                                                        (chem:matter-copy ltarget)
@@ -669,8 +673,7 @@ its for and then create a new class for it."))
   (ensure-directories-exist (call-next-method)))
 
 (defmethod node-pathname ((node feps-file))
-  (make-pathname :directory (list :relative (string-downcase (name node)))
-                 :name "feps"
+  (make-pathname :name (string-downcase (name node))
                  :type (extension node)))
 
 (defmethod node-pathname ((node node-file))
@@ -1270,8 +1273,20 @@ added to inputs and outputs but not option-inputs or option-outputs"
 
 |#
 
+(defmethod print-object ((object chem:aggregate) stream)
+  "Aggregates can have atom graphs that are way too wide and deep to print the 
+normal way - so we short circuit it here using a mol2 file"
+  (let ((agg-string (chem:aggregate-as-mol2-string object)))
+    (format stream "#.(with-input-from-string (sin ~s) (chem:read-mol2 sin)) " agg-string)))
 
 
+(defun save-feps (feps feps-file)
+  (cando:save-cando feps feps-file))
+
+(defun load-feps (feps-file)
+  (cando:load-cando feps-file))
+
+#+(or)
 (defun save-feps (feps feps-file)
   (setf (receptor-strings feps) nil)
   (let* ((receptors (receptors feps))
@@ -1283,6 +1298,7 @@ added to inputs and outputs but not option-inputs or option-outputs"
   (cando:save-cando feps feps-file))
 
 
+#+(or)
 (defun load-feps (feps-file)
   "Load a feps database and register the topologys"
   (let ((feps (cando:load-cando feps-file))

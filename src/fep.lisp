@@ -331,8 +331,7 @@
   name)
 
 (defclass calculation ()
-  ((receptors :initform nil :accessor receptors)
-   (receptor-strings :initarg :receptor-strings :accessor receptor-strings)
+  ((receptors :initform nil :initarg :receptors :accessor receptors)
    (ligands :initarg :ligands :accessor ligands)
    (mask-method :initform :default :initarg :mask-method :accessor mask-method)
    (core-topology :initarg :core-topology :accessor core-topology)
