@@ -1011,7 +1011,7 @@ its for and then create a new class for it."))
          (heat.rst (output-file heat-job :-r))
          (press-job (make-morph-side-prepare-job morph side
                                                  :name "press"
-                                                 :executable "pmemd"
+                                                 :executable "pmemd.cuda"
                                                  :script *prepare-press-in*
                                                  :input-coordinate-file heat.rst
                                                  :input-topology-file input-topology-file)))
