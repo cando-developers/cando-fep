@@ -784,11 +784,16 @@ Otherwise return NIL."
 
 (defclass ti-mask ()
   ((source :initarg :source :accessor source)
-   (source-timask :initarg :source-timask :accessor source-timask)
-   (source-scmask :initarg :source-scmask :accessor source-scmask)
+   (source-timask-residue-index :initarg :source-timask-residue-index :accessor source-timask-residue-index)
+   (source-scmask-atom-names :initarg :source-scmask-atom-names :accessor source-scmask-atom-names)
+   ;;   (source-timask :initarg :source-timask :accessor source-timask)
+   ;;   (source-scmask :initarg :source-scmask :accessor source-scmask)
    (target :initarg :target :accessor target)
-   (target-timask :initarg :target-timask :accessor target-timask)
-   (target-scmask :initarg :target-scmask :accessor target-scmask)))
+   (target-timask-residue-index :initarg :target-timask-residue-index :accessor target-timask-residue-index)
+   (target-scmask-atom-names :initarg :target-scmask-atom-names :accessor target-scmask-atom-names)
+   ;;   (target-timask :initarg :target-timask :accessor target-timask)
+   ;;   (target-scmask :initarg :target-scmask :accessor target-scmask)
+   ))
 
 
 (defgeneric calculate-masks (morph kind)
@@ -813,45 +818,52 @@ METHOD controls how the masks are calculated"
         (target (target morph)))
     (let ((source-core-residue (unique-residue-with-name (molecule source) (core-residue-name source)))
           (target-core-residue (unique-residue-with-name (molecule target) (core-residue-name target)))
-          (source-mutate-atoms (side-chain-atoms source))
-          (target-mutate-atoms (side-chain-atoms target))
+          (source-softcore-atoms (side-chain-atoms source))
+          (target-softcore-atoms (side-chain-atoms target))
           (combined-aggregate (cando:combine (molecule source) (molecule target))))
       (let ((sequenced-residues (chem:map-residues 'vector #'identity combined-aggregate))) ; vector of residues in order they will appear in topology file
         (let ((source-timask-residue-index (1+ (position source-core-residue sequenced-residues)))
-              (source-scmask-atom-names (loop for atom in source-mutate-atoms
+              (source-scmask-atom-names (loop for atom in source-softcore-atoms
                                               collect (chem:get-name atom)))
               (target-timask-residue-index (1+ (position target-core-residue sequenced-residues)))
-              (target-scmask-atom-names (loop for atom in target-mutate-atoms
+              (target-scmask-atom-names (loop for atom in target-softcore-atoms
                                               collect (chem:get-name atom))))
           (make-instance 'ti-mask
                          :source source
-                         :source-timask (format nil ":~d" source-timask-residue-index)
-                         :source-scmask (format nil ":~d@~{~d~^,~}" source-timask-residue-index source-scmask-atom-names)
+			 :source-timask-residue-index source-timask-residue-index
+			 :source-scmask-atom-names source-scmask-atom-names
+                         ;; :source-timask (format nil ":~d" source-timask-residue-index)
+                         ;; :source-scmask (format nil ":~d@~{~d~^,~}" source-timask-residue-index source-scmask-atom-names)
                          :target target
-                         :target-timask (format nil ":~d" target-timask-residue-index)
-                         :target-scmask (format nil ":~d@~{~d~^,~}" target-timask-residue-index target-scmask-atom-names)))))))
+			 :target-timask-residue-index target-timask-residue-index
+			 :target-scmask-atom-names target-scmask-atom-names
+                         ;; :target-timask (format nil ":~d" target-timask-residue-index)
+                         ;; :target-scmask (format nil ":~d@~{~d~^,~}" target-timask-residue-index target-scmask-atom-names)
+			 ))))))
 
 (defun mask-substitutions (mask &optional stage)
   (unless (typep stage '(member nil :vdw-bonded :decharge :recharge))
     (error "stage ~s must be one of nil :vdw-bonded :decharge :recharge" stage))
   (list
-   (cons :%TIMASK1% (source-timask mask))
-   (cons :%SCMASK1% (source-scmask mask))
-   (cons :%TIMASK2% (target-timask mask))
-   (cons :%SCMASK2% (target-scmask mask))))
+   (cons :%TIMASK1% (format nil ":~d" (source-timask-residue-index mask)))
+   (cons :%SCMASK1% (format nil ":~d@~{~d~^,~}" (source-timask-residue-index mask) (source-scmask-atom-names mask)))
+   (cons :%TIMASK2% (format nil ":~d" (target-timask-residue-index mask)))
+   (cons :%SCMASK2% (format nil ":~d@~{~d~^,~}" (target-timask-residue-index mask) (target-scmask-atom-names mask)))))
 
 (defun crgmask-substitutions (mask stage)
   (unless (typep stage '(member nil :vdw-bonded :decharge :recharge))
     (error "stage ~s must be one of nil :vdw-bonded :decharge :recharge" stage))
   (cond
     ((eq stage :decharge)
-     (list (cons :%CRGMASK% (source-scmask mask))
+     (List (cons :%CRGMASK% (format nil ":~d@~{~d~^,~}" (target-timask-residue-index mask) (source-scmask-atom-names mask)))
            (cons :%IFSC% "0")))
     ((eq stage :vdw-bonded)
-     (list (cons :%CRGMASK% (format nil "~a|~a" (source-scmask mask) (target-scmask mask))) 
+     (list (cons :%CRGMASK% (format nil ":~d@~{~d~^,~}|:~d@~{~d~^,~}"
+				    (source-timask-residue-index mask) (source-scmask-atom-names mask)
+				    (target-timask-residue-index mask) (target-scmask-atom-names mask)))
            (cons :%IFSC% "1")))
     ((eq stage :recharge)
-     (list (cons :%CRGMASK% (target-scmask mask))
+     (list (cons :%CRGMASK% (format nil ":~d@~{~d~^,~}" (source-timask-residue-index mask) (target-scmask-atom-names mask)))
            (cons :%IFSC% "0")))
     (t nil)))
 
