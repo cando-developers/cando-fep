@@ -6,8 +6,7 @@
 (defparameter *cando-charge-script*
   (let ((*package* (find-package :keyword)))
     (cl:format nil "~{~s~%~}"
-               '((load "source-dir:extensions;cando;src;lisp;start-cando.lisp")
-                 (ql:quickload :fep)
+               '((ql:quickload :fep)
                  (in-package :cando-user)
                  (defparameter *feps* (fep:load-feps ":%FEPS%"))
                  (read-am1-charges *feps*)
@@ -20,8 +19,7 @@
 (defparameter *solvate-addion-morph-side-script*
   (let ((*package* (find-package :keyword)))
     (cl:format nil "~{~s~%~}"
-               '((load "source-dir:extensions;cando;src;lisp;start-cando.lisp")
-                 (ql:quickload :fep)
+               '((ql:quickload :fep)
                  (in-package :cando-user)
                  (leap:setup-amber-paths)
                  (leap:source "leaprc.water.tip3p")
@@ -162,8 +160,7 @@ outtraj :%TARGET% onlyframes 1
 (defparameter *decharge*
   (let ((*package* (find-package :keyword)))
     (cl:format nil "~{~s~%~}"
-               `((load "source-dir:extensions;cando;src;lisp;start-cando.lisp")
-                 (ql:quickload :fep)
+               `((ql:quickload :fep)
                  (leap:setup-amber-paths)
                  (leap:source "leaprc.ff14SB.redq")
                  (leap:source "leaprc.gaff")
@@ -188,8 +185,7 @@ outtraj :%TARGET% onlyframes 1
 (defparameter *recharge*
   (let ((*package* (find-package :keyword)))
     (cl:format nil "~{~s~%~}"
-               `((load "source-dir:extensions;cando;src;lisp;start-cando.lisp")
-                 (ql:quickload :fep)
+               `((ql:quickload :fep)
                  (leap:setup-amber-paths)
                  (leap:source "leaprc.ff14SB.redq")
                  (leap:source "leaprc.gaff")
@@ -464,8 +460,7 @@ if __name__ == '__main__':
 (defparameter *combine-stages*
   (let ((*package* (find-package :keyword)))
     (cl:format nil "~{~s~%~}"
-               '((load "source-dir:extensions;cando;src;lisp;start-cando.lisp")
-                 (ql:quickload :fep)
+               '((ql:quickload :fep)
                  (in-package :cando-user)
                  (let ((total 0.0)
 		       parts)
@@ -484,8 +479,7 @@ if __name__ == '__main__':
 (defparameter *combine-sides*
   (let ((*package* (find-package :keyword)))
     (cl:format nil "~{~s~%~}"
-               '((load "source-dir:extensions;cando;src;lisp;start-cando.lisp")
-                 (ql:quickload :fep)
+               '((ql:quickload :fep)
                  (in-package :cando-user)
 		 (let* ((parts
 			 (loop for filename in :%.parts%
@@ -960,8 +954,8 @@ its for and then create a new class for it."))
 
 (defun standard-cando-makefile-clause (script &key add-inputs)
   (if add-inputs
-      (standard-makefile-clause (format nil "iclasp-boehm -N -l ~a -- :%INPUTS%" (node-pathname script)))
-      (standard-makefile-clause (format nil "iclasp-boehm -N -l ~a" (node-pathname script)))))
+      (standard-makefile-clause (format nil "ccando-boehm -N -l ~a -- :%INPUTS%" (node-pathname script)))
+      (standard-makefile-clause (format nil "ccando-boehm -N -l ~a" (node-pathname script)))))
 
 (defun make-ligand-sqm-step (ligand &key sqm-input-file)
   (connect-graph
