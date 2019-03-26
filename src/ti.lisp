@@ -954,8 +954,8 @@ its for and then create a new class for it."))
 
 (defun standard-cando-makefile-clause (script &key add-inputs)
   (if add-inputs
-      (standard-makefile-clause (format nil "ccando-boehm -N -l ~a -- :%INPUTS%" (node-pathname script)))
-      (standard-makefile-clause (format nil "ccando-boehm -N -l ~a" (node-pathname script)))))
+      (standard-makefile-clause (format nil "icando-boehm -N -l ~a -- :%INPUTS%" (node-pathname script)))
+      (standard-makefile-clause (format nil "icando-boehm -N -l ~a" (node-pathname script)))))
 
 (defun make-ligand-sqm-step (ligand &key sqm-input-file)
   (connect-graph
