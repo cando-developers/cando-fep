@@ -1,5 +1,9 @@
 ;; <script type=\"text/javascript\" src=\"https://www.graphdracula.net/js/graph.js\"></script>
 
+;;; Copyright (c) 2019, Christian E. Schafmeister
+;;; Published under the GPL 2.0.  See COPYING
+;;;
+
 (in-package :graph)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;

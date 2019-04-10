@@ -1,3 +1,7 @@
+;;; Copyright (c) 2019, Christian E. Schafmeister
+;;; Published under the GPL 2.0.  See COPYING
+;;;
+
 (in-package :fepdot)
 
 (defmethod draw-node (id (node fep:job) stream)

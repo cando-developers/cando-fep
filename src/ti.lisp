@@ -1,3 +1,7 @@
+;;; Copyright (c) 2016, Christian E. Schafmeister
+;;; Published under the GPL 2.0.  See COPYING
+;;;
+
 (in-package :fep)
 
 ;;; What is this for????
